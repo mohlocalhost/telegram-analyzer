@@ -31,6 +31,13 @@ async def main():
         text = message.text.strip()
         text_lower = text.lower()
 
+        # Skip hourly summary messages (contain multiple results)
+        if text.startswith("📊 Last Hour Results"):
+            count += 1
+            if count % 200 == 0:
+                print(f"  Fetched {count} messages...")
+            continue
+
         result = None
         if any(k.lower() in text_lower for k in WIN_KEYWORDS):
             result = "WIN"

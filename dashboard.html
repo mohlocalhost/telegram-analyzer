@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signals Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #121212; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; padding: 16px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: #888; font-size: 12px; margin-bottom: 20px; }
+  h2 { font-size: 16px; margin: 20px 0 10px; color: #bbb; border-bottom: 1px solid #333; padding-bottom: 6px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: #1e1e1e; border-radius: 10px; padding: 14px; }
+  .table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .table th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #333; color: #999; font-weight: 600; }
+  .table td { padding: 5px 4px; border-bottom: 1px solid #282828; }
+  .table tr:hover td { background: #252525; }
+  .rank { color: #666; width: 28px; }
+  .wr { font-weight: 700; font-size: 13px; }
+  .ci { color: #777; font-size: 11px; }
+  .bar { display: inline-block; height: 10px; border-radius: 4px; vertical-align: middle; }
+  .today-tbl tr.highlight { background: #1a2e1a !important; }
+  .today-tbl tr.highlight td { border-bottom-color: #2a4a2a; }
+  .today-stats { margin-top: 8px; padding: 8px; background: #181818; border-radius: 6px; font-size: 12px; color: #aaa; }
+  .best3 { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .pill { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; color: #fff; }
+  .avoid-card td { color: #e57373; }
+  .commands { font-size: 12px; }
+  .commands code { display: inline-block; background: #282828; padding: 2px 8px; border-radius: 4px; color: #81c784; font-family: 'SFMono', monospace; margin: 2px 0; }
+  .commands td { padding: 4px 8px; vertical-align: top; }
+  .cmd-desc { color: #999; }
+  .heatmap { font-size: 11px; border-collapse: collapse; width: 100%; }
+  .heatmap th { background: #1a1a1a; padding: 4px 2px; text-align: center; font-weight: 600; color: #999; font-size: 10px; }
+  .heatmap .day-label { font-weight: 700; padding: 4px 6px; text-align: left; color: #bbb; background: #1a1a1a; }
+  .hcell { text-align: center; padding: 4px 2px; cursor: default; font-weight: 700; font-size: 11px; color: #fff; width: 28px; }
+  .hcell.low-sample { opacity: 0.5; }
+  .hcell.empty { background: #1a1a1a !important; color: #333; }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; font-size: 11px; align-items: center; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 3px; }
+  .footer { margin-top: 24px; padding: 12px 0; text-align: center; color: #555; font-size: 11px; border-top: 1px solid #222; }
+  .cmd-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .cmd-btn { background: #2a2a2a; border: 1px solid #444; color: #ccc; padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: 'SFMono', monospace; }
+  .cmd-btn:hover { background: #3a3a3a; border-color: #666; }
+  .cmd-btn:active { background: #4a4a4a; }
+  .cmd-btn.run { background: #1b5e20; border-color: #2e7d32; color: #a5d6a7; }
+  .cmd-output { background: #0d0d0d; border: 1px solid #333; border-radius: 6px; padding: 10px; font-family: 'SFMono', monospace; font-size: 11px; white-space: pre-wrap; overflow-x: auto; max-height: 400px; overflow-y: auto; color: #a0d0a0; display: none; line-height: 1.5; }
+  .cmd-output.loading { opacity: 0.5; }
+  .cmd-output .err { color: #e57373; }
+  .inp-group { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  .inp-group input { background: #1a1a1a; border: 1px solid #444; color: #ccc; padding: 4px 8px; border-radius: 4px; font-size: 12px; width: 80px; font-family: 'SFMono', monospace; }
+  .inp-group label { color: #888; font-size: 11px; }
+</style>
+<script>
+async function runCmd(cmd, args) {
+  const out = document.getElementById('cmd-output');
+  const url = '/api/run?cmd=' + encodeURIComponent(cmd) + (args ? '&args=' + encodeURIComponent(args) : '');
+  out.style.display = 'block';
+  out.textContent = 'Running...';
+  out.className = 'cmd-output loading';
+  try {
+    const r = await fetch(url);
+    const text = await r.text();
+    out.textContent = text;
+    out.className = 'cmd-output';
+  } catch(e) {
+    out.textContent = 'Error: ' + e.message;
+    out.className = 'cmd-output err';
+  }
+}
+function runTop() {
+  const n = document.getElementById('top-n').value || '20';
+  runCmd('top20', '--top ' + n);
+}
+function runStrategy() {
+  const n = document.getElementById('strat-n').value || '12';
+  runCmd('strategy', '--target ' + n);
+}
+</script>
+</head>
+<body>
+<div class="container">
+
+<h1>📊 Signals Dashboard</h1>
+<div class="sub">Thu Jul 09 2026 10:24 GMT+4 (Tbilisi) &middot; 168 qualified slots (min 30 samples)</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>📅 Today — Thu</h2>
+    <table class="table today-tbl">
+<tr><th>Hour</th><th>W%</th><th>95% CI</th><th>W/L</th><th>n</th></tr><tr class='highlight'>
+      <td>08:00</td>
+      <td><span class="wr" style="color:#66bb6a">93.3%</span></td>
+      <td class="ci">[88.8–96.0]</td>
+      <td>180W/13L</td>
+      <td>193</td>
+    </tr><tr class='highlight'>
+      <td>16:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.9%</span></td>
+      <td class="ci">[86.8–95.1]</td>
+      <td>158W/14L</td>
+      <td>172</td>
+    </tr><tr class='highlight'>
+      <td>03:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.8%</span></td>
+      <td class="ci">[87.0–95.0]</td>
+      <td>169W/15L</td>
+      <td>184</td>
+    </tr><tr>
+      <td>21:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.4%</span></td>
+      <td class="ci">[86.6–94.7]</td>
+      <td>171W/16L</td>
+      <td>187</td>
+    </tr><tr>
+      <td>02:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.1%</span></td>
+      <td class="ci">[86.0–94.5]</td>
+      <td>164W/16L</td>
+      <td>180</td>
+    </tr><tr>
+      <td>22:00</td>
+      <td><span class="wr" style="color:#fdd835">89.9%</span></td>
+      <td class="ci">[84.6–93.5]</td>
+      <td>160W/18L</td>
+      <td>178</td>
+    </tr><tr>
+      <td>23:00</td>
+      <td><span class="wr" style="color:#fdd835">89.9%</span></td>
+      <td class="ci">[84.4–93.6]</td>
+      <td>151W/17L</td>
+      <td>168</td>
+    </tr><tr>
+      <td>19:00</td>
+      <td><span class="wr" style="color:#fdd835">89.8%</span></td>
+      <td class="ci">[84.2–93.5]</td>
+      <td>149W/17L</td>
+      <td>166</td>
+    </tr><tr>
+      <td>11:00</td>
+      <td><span class="wr" style="color:#fdd835">89.6%</span></td>
+      <td class="ci">[84.4–93.3]</td>
+      <td>164W/19L</td>
+      <td>183</td>
+    </tr><tr>
+      <td>17:00</td>
+      <td><span class="wr" style="color:#fdd835">89.4%</span></td>
+      <td class="ci">[83.9–93.2]</td>
+      <td>152W/18L</td>
+      <td>170</td>
+    </tr><tr>
+      <td>14:00</td>
+      <td><span class="wr" style="color:#fdd835">89.2%</span></td>
+      <td class="ci">[83.6–93.1]</td>
+      <td>149W/18L</td>
+      <td>167</td>
+    </tr><tr>
+      <td>09:00</td>
+      <td><span class="wr" style="color:#fdd835">89.1%</span></td>
+      <td class="ci">[83.9–92.7]</td>
+      <td>171W/21L</td>
+      <td>192</td>
+    </tr><tr>
+      <td>06:00</td>
+      <td><span class="wr" style="color:#fdd835">88.8%</span></td>
+      <td class="ci">[83.5–92.6]</td>
+      <td>167W/21L</td>
+      <td>188</td>
+    </tr><tr>
+      <td>15:00</td>
+      <td><span class="wr" style="color:#fdd835">87.9%</span></td>
+      <td class="ci">[82.3–92.0]</td>
+      <td>153W/21L</td>
+      <td>174</td>
+    </tr><tr>
+      <td>00:00</td>
+      <td><span class="wr" style="color:#fdd835">87.7%</span></td>
+      <td class="ci">[82.1–91.7]</td>
+      <td>157W/22L</td>
+      <td>179</td>
+    </tr><tr>
+      <td>07:00</td>
+      <td><span class="wr" style="color:#fdd835">87.4%</span></td>
+      <td class="ci">[81.9–91.4]</td>
+      <td>166W/24L</td>
+      <td>190</td>
+    </tr><tr>
+      <td>13:00</td>
+      <td><span class="wr" style="color:#fdd835">87.4%</span></td>
+      <td class="ci">[81.7–91.5]</td>
+      <td>153W/22L</td>
+      <td>175</td>
+    </tr><tr>
+      <td>10:00</td>
+      <td><span class="wr" style="color:#fdd835">87.3%</span></td>
+      <td class="ci">[81.8–91.3]</td>
+      <td>165W/24L</td>
+      <td>189</td>
+    </tr><tr>
+      <td>20:00</td>
+      <td><span class="wr" style="color:#fdd835">86.6%</span></td>
+      <td class="ci">[80.8–90.8]</td>
+      <td>155W/24L</td>
+      <td>179</td>
+    </tr><tr>
+      <td>04:00</td>
+      <td><span class="wr" style="color:#fdd835">86.4%</span></td>
+      <td class="ci">[80.7–90.6]</td>
+      <td>159W/25L</td>
+      <td>184</td>
+    </tr><tr>
+      <td>05:00</td>
+      <td><span class="wr" style="color:#fdd835">86.0%</span></td>
+      <td class="ci">[80.4–90.2]</td>
+      <td>166W/27L</td>
+      <td>193</td>
+    </tr><tr>
+      <td>18:00</td>
+      <td><span class="wr" style="color:#fb8c00">85.5%</span></td>
+      <td class="ci">[79.3–90.0]</td>
+      <td>141W/24L</td>
+      <td>165</td>
+    </tr><tr>
+      <td>12:00</td>
+      <td><span class="wr" style="color:#fb8c00">85.2%</span></td>
+      <td class="ci">[79.3–89.6]</td>
+      <td>155W/27L</td>
+      <td>182</td>
+    </tr><tr>
+      <td>01:00</td>
+      <td><span class="wr" style="color:#fb8c00">85.1%</span></td>
+      <td class="ci">[79.3–89.5]</td>
+      <td>160W/28L</td>
+      <td>188</td>
+    </tr></table>
+    <div class="today-stats">
+      Volume: <b>4326</b> signals &middot; Avg WR: <b>88.7%</b> &middot; ≥90% slots: <b>5</b>
+    </div><div class="best3"><div class="pill" style="background:#66bb6a">08:00 93%</div><div class="pill" style="background:#66bb6a">16:00 92%</div><div class="pill" style="background:#66bb6a">03:00 92%</div></div>
+  </div>
+  <div class="card">
+    <h2>⚡ Run Commands</h2>
+    <div class="cmd-bar">
+      <button class="cmd-btn run" onclick="runCmd('today')">--today</button>
+      <div class="inp-group">
+        <label>--top</label>
+        <input type="number" id="top-n" value="20" min="1" max="168">
+        <button class="cmd-btn" onclick="runTop()">Go</button>
+      </div>
+      <button class="cmd-btn" onclick="runCmd('by-ci')">--by-ci</button>
+      <div class="inp-group">
+        <label>--strategy</label>
+        <input type="number" id="strat-n" value="12" min="1" max="50">
+        <button class="cmd-btn" onclick="runStrategy()">Go</button>
+      </div>
+      <button class="cmd-btn" onclick="runCmd('avoid')">--avoid</button>
+      <button class="cmd-btn" onclick="runCmd('safest')">--safest</button>
+    </div>
+    <pre id="cmd-output" class="cmd-output"></pre>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>🏆 Top 20 Slots</h2>
+  <table class="table">
+    <tr><th class="rank">#</th><th>Day</th><th>Hour</th><th>W%</th><th>95% CI</th><th>W/L</th><th>n</th><th></th></tr>
+    <tr>
+      <td class="rank">1</td>
+      <td>Sun</td>
+      <td>16:00</td>
+      <td><span class="wr" style="color:#66bb6a">93.8%</span></td>
+      <td class="ci">[89.4–96.4]</td>
+      <td>181W/12L</td>
+      <td>193</td>
+      <td><span class="bar" style="background:#66bb6a;width:66px"></span></td>
+    </tr><tr>
+      <td class="rank">2</td>
+      <td>Fri</td>
+      <td>04:00</td>
+      <td><span class="wr" style="color:#66bb6a">93.8%</span></td>
+      <td class="ci">[88.9–96.6]</td>
+      <td>150W/10L</td>
+      <td>160</td>
+      <td><span class="bar" style="background:#66bb6a;width:66px"></span></td>
+    </tr><tr>
+      <td class="rank">3</td>
+      <td>Thu</td>
+      <td>08:00</td>
+      <td><span class="wr" style="color:#66bb6a">93.3%</span></td>
+      <td class="ci">[88.8–96.0]</td>
+      <td>180W/13L</td>
+      <td>193</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">4</td>
+      <td>Sat</td>
+      <td>16:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.9%</span></td>
+      <td class="ci">[88.0–95.9]</td>
+      <td>157W/12L</td>
+      <td>169</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">5</td>
+      <td>Sat</td>
+      <td>07:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.9%</span></td>
+      <td class="ci">[87.9–95.9]</td>
+      <td>156W/12L</td>
+      <td>168</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">6</td>
+      <td>Sat</td>
+      <td>18:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.8%</span></td>
+      <td class="ci">[88.1–95.8]</td>
+      <td>168W/13L</td>
+      <td>181</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">7</td>
+      <td>Sun</td>
+      <td>14:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.8%</span></td>
+      <td class="ci">[88.1–95.8]</td>
+      <td>168W/13L</td>
+      <td>181</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">8</td>
+      <td>Sun</td>
+      <td>09:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.6%</span></td>
+      <td class="ci">[87.7–95.6]</td>
+      <td>162W/13L</td>
+      <td>175</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">9</td>
+      <td>Fri</td>
+      <td>22:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.5%</span></td>
+      <td class="ci">[87.6–95.6]</td>
+      <td>160W/13L</td>
+      <td>173</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">10</td>
+      <td>Mon</td>
+      <td>07:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.3%</span></td>
+      <td class="ci">[87.4–95.3]</td>
+      <td>167W/14L</td>
+      <td>181</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">11</td>
+      <td>Sat</td>
+      <td>11:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.3%</span></td>
+      <td class="ci">[87.3–95.4]</td>
+      <td>156W/13L</td>
+      <td>169</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">12</td>
+      <td>Fri</td>
+      <td>01:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.2%</span></td>
+      <td class="ci">[86.8–95.5]</td>
+      <td>141W/12L</td>
+      <td>153</td>
+      <td><span class="bar" style="background:#66bb6a;width:65px"></span></td>
+    </tr><tr>
+      <td class="rank">13</td>
+      <td>Fri</td>
+      <td>05:00</td>
+      <td><span class="wr" style="color:#66bb6a">92.0%</span></td>
+      <td class="ci">[86.8–95.3]</td>
+      <td>149W/13L</td>
+      <td>162</td>
+      <td><span class="bar" style="background:#66bb6a;width:64px"></span></td>
+    </tr><tr>
+      <td class="rank">14</td>
+      <td>Thu</td>
+      <td>16:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.9%</span></td>
+      <td class="ci">[86.8–95.1]</td>
+      <td>158W/14L</td>
+      <td>172</td>
+      <td><span class="bar" style="background:#66bb6a;width:64px"></span></td>
+    </tr><tr>
+      <td class="rank">15</td>
+      <td>Thu</td>
+      <td>03:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.8%</span></td>
+      <td class="ci">[87.0–95.0]</td>
+      <td>169W/15L</td>
+      <td>184</td>
+      <td><span class="bar" style="background:#66bb6a;width:64px"></span></td>
+    </tr><tr>
+      <td class="rank">16</td>
+      <td>Mon</td>
+      <td>20:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.7%</span></td>
+      <td class="ci">[87.0–94.8]</td>
+      <td>177W/16L</td>
+      <td>193</td>
+      <td><span class="bar" style="background:#66bb6a;width:64px"></span></td>
+    </tr><tr>
+      <td class="rank">17</td>
+      <td>Tue</td>
+      <td>04:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.6%</span></td>
+      <td class="ci">[86.3–94.9]</td>
+      <td>152W/14L</td>
+      <td>166</td>
+      <td><span class="bar" style="background:#66bb6a;width:64px"></span></td>
+    </tr><tr>
+      <td class="rank">18</td>
+      <td>Sun</td>
+      <td>19:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.5%</span></td>
+      <td class="ci">[86.8–94.6]</td>
+      <td>183W/17L</td>
+      <td>200</td>
+      <td><span class="bar" style="background:#66bb6a;width:64px"></span></td>
+    </tr><tr>
+      <td class="rank">19</td>
+      <td>Wed</td>
+      <td>03:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.5%</span></td>
+      <td class="ci">[86.3–94.9]</td>
+      <td>151W/14L</td>
+      <td>165</td>
+      <td><span class="bar" style="background:#66bb6a;width:64px"></span></td>
+    </tr><tr>
+      <td class="rank">20</td>
+      <td>Wed</td>
+      <td>02:00</td>
+      <td><span class="wr" style="color:#66bb6a">91.5%</span></td>
+      <td class="ci">[86.0–95.0]</td>
+      <td>140W/13L</td>
+      <td>153</td>
+      <td><span class="bar" style="background:#66bb6a;width:64px"></span></td>
+    </tr>
+  </table>
+</div>
+
+<div class="grid" style="margin-top:16px">
+  <div class="card">
+    <h2>⚠️ Worst 10 Slots to Avoid</h2>
+    <table class="table avoid-card">
+      <tr><th>Day</th><th>Hour</th><th>W%</th><th>95% CI</th><th>W/L</th><th>n</th><th>L/200</th></tr>
+      <tr>
+      <td>Tue</td>
+      <td>23:00</td>
+      <td><span class="wr" style="color:#d32f2f">78.1%</span></td>
+      <td class="ci">[71.3–83.7]</td>
+      <td>132W/37L</td>
+      <td>169</td>
+      <td>44</td>
+    </tr><tr>
+      <td>Wed</td>
+      <td>01:00</td>
+      <td><span class="wr" style="color:#d32f2f">81.5%</span></td>
+      <td class="ci">[75.0–86.7]</td>
+      <td>137W/31L</td>
+      <td>168</td>
+      <td>37</td>
+    </tr><tr>
+      <td>Fri</td>
+      <td>00:00</td>
+      <td><span class="wr" style="color:#fb8c00">82.6%</span></td>
+      <td class="ci">[75.8–87.7]</td>
+      <td>128W/27L</td>
+      <td>155</td>
+      <td>35</td>
+    </tr><tr>
+      <td>Sat</td>
+      <td>15:00</td>
+      <td><span class="wr" style="color:#fb8c00">82.8%</span></td>
+      <td class="ci">[76.4–87.8]</td>
+      <td>140W/29L</td>
+      <td>169</td>
+      <td>34</td>
+    </tr><tr>
+      <td>Mon</td>
+      <td>22:00</td>
+      <td><span class="wr" style="color:#fb8c00">83.4%</span></td>
+      <td class="ci">[77.2–88.2]</td>
+      <td>146W/29L</td>
+      <td>175</td>
+      <td>33</td>
+    </tr><tr>
+      <td>Sun</td>
+      <td>07:00</td>
+      <td><span class="wr" style="color:#fb8c00">83.8%</span></td>
+      <td class="ci">[77.7–88.5]</td>
+      <td>150W/29L</td>
+      <td>179</td>
+      <td>32</td>
+    </tr><tr>
+      <td>Fri</td>
+      <td>11:00</td>
+      <td><span class="wr" style="color:#fb8c00">84.1%</span></td>
+      <td class="ci">[77.5–89.0]</td>
+      <td>132W/25L</td>
+      <td>157</td>
+      <td>32</td>
+    </tr><tr>
+      <td>Sun</td>
+      <td>06:00</td>
+      <td><span class="wr" style="color:#fb8c00">84.1%</span></td>
+      <td class="ci">[78.1–88.7]</td>
+      <td>153W/29L</td>
+      <td>182</td>
+      <td>32</td>
+    </tr><tr>
+      <td>Wed</td>
+      <td>06:00</td>
+      <td><span class="wr" style="color:#fb8c00">84.2%</span></td>
+      <td class="ci">[78.0–88.9]</td>
+      <td>144W/27L</td>
+      <td>171</td>
+      <td>32</td>
+    </tr><tr>
+      <td>Wed</td>
+      <td>20:00</td>
+      <td><span class="wr" style="color:#fb8c00">84.6%</span></td>
+      <td class="ci">[78.5–89.2]</td>
+      <td>148W/27L</td>
+      <td>175</td>
+      <td>31</td>
+    </tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>📈 Strategy Quick Reference</h2>
+    <table class="table">
+      <tr><th>Threshold</th><th>Slots</th><th>Signals/day</th><th>Avg W%</th><th>L/200</th></tr>
+      <tr>
+      <td><span class="wr" style="color:#2e7d32">≥93%</span></td>
+      <td>3</td>
+      <td>78</td>
+      <td>93.6%</td>
+      <td>12.8</td>
+    </tr><tr>
+      <td><span class="wr" style="color:#2e7d32">≥92%</span></td>
+      <td>13</td>
+      <td>322</td>
+      <td>92.8%</td>
+      <td>14.4</td>
+    </tr><tr>
+      <td><span class="wr" style="color:#66bb6a">≥90%</span></td>
+      <td>45</td>
+      <td>1119</td>
+      <td>91.4%</td>
+      <td>17.2</td>
+    </tr>
+    </table>
+    <div style="margin-top:10px;font-size:12px;color:#888">
+      <b>Run:</b> <code>python best_signals.py --strategy --target N</code>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>⏱️ Minute Analysis — Best &amp; Worst 5-min Block per Hour</h2>
+  <div style="font-size:11px;color:#888;margin-bottom:8px">
+    Signal times converted from UTC-3 → GMT+4. Paired 27588 signals with their results.
+  </div>
+  <table class="table">
+    <tr><th>Hour</th><th colspan="2">Best 5-min</th><th></th><th colspan="2">Worst 5-min</th><th></th></tr>
+    <tr>
+      <td>00:00</td>
+      <td><span class="wr" style="color:#66bb6a">00-04</span></td>
+      <td><span class="wr" style="color:#66bb6a">91%</span></td>
+      <td class="ci">n=91</td>
+      <td><span class="wr" style="color:#fb8c00">20-24</span></td>
+      <td><span class="wr" style="color:#fb8c00">82%</span></td>
+      <td class="ci">n=95</td>
+    </tr><tr>
+      <td>01:00</td>
+      <td><span class="wr" style="color:#66bb6a">00-04</span></td>
+      <td><span class="wr" style="color:#66bb6a">93%</span></td>
+      <td class="ci">n=92</td>
+      <td><span class="wr" style="color:#d32f2f">50-54</span></td>
+      <td><span class="wr" style="color:#d32f2f">82%</span></td>
+      <td class="ci">n=98</td>
+    </tr><tr>
+      <td>02:00</td>
+      <td><span class="wr" style="color:#2e7d32">00-04</span></td>
+      <td><span class="wr" style="color:#2e7d32">96%</span></td>
+      <td class="ci">n=68</td>
+      <td><span class="wr" style="color:#fb8c00">05-09</span></td>
+      <td><span class="wr" style="color:#fb8c00">85%</span></td>
+      <td class="ci">n=84</td>
+    </tr><tr>
+      <td>03:00</td>
+      <td><span class="wr" style="color:#66bb6a">55-59</span></td>
+      <td><span class="wr" style="color:#66bb6a">93%</span></td>
+      <td class="ci">n=87</td>
+      <td><span class="wr" style="color:#fb8c00">30-34</span></td>
+      <td><span class="wr" style="color:#fb8c00">83%</span></td>
+      <td class="ci">n=96</td>
+    </tr><tr>
+      <td>04:00</td>
+      <td><span class="wr" style="color:#66bb6a">10-14</span></td>
+      <td><span class="wr" style="color:#66bb6a">92%</span></td>
+      <td class="ci">n=106</td>
+      <td><span class="wr" style="color:#fb8c00">00-04</span></td>
+      <td><span class="wr" style="color:#fb8c00">83%</span></td>
+      <td class="ci">n=101</td>
+    </tr><tr>
+      <td>05:00</td>
+      <td><span class="wr" style="color:#66bb6a">35-39</span></td>
+      <td><span class="wr" style="color:#66bb6a">94%</span></td>
+      <td class="ci">n=98</td>
+      <td><span class="wr" style="color:#d32f2f">15-19</span></td>
+      <td><span class="wr" style="color:#d32f2f">82%</span></td>
+      <td class="ci">n=92</td>
+    </tr><tr>
+      <td>06:00</td>
+      <td><span class="wr" style="color:#66bb6a">30-34</span></td>
+      <td><span class="wr" style="color:#66bb6a">91%</span></td>
+      <td class="ci">n=93</td>
+      <td><span class="wr" style="color:#fb8c00">25-29</span></td>
+      <td><span class="wr" style="color:#fb8c00">82%</span></td>
+      <td class="ci">n=107</td>
+    </tr><tr>
+      <td>07:00</td>
+      <td><span class="wr" style="color:#66bb6a">10-14</span></td>
+      <td><span class="wr" style="color:#66bb6a">93%</span></td>
+      <td class="ci">n=101</td>
+      <td><span class="wr" style="color:#fb8c00">30-34</span></td>
+      <td><span class="wr" style="color:#fb8c00">85%</span></td>
+      <td class="ci">n=103</td>
+    </tr><tr>
+      <td>08:00</td>
+      <td><span class="wr" style="color:#66bb6a">35-39</span></td>
+      <td><span class="wr" style="color:#66bb6a">94%</span></td>
+      <td class="ci">n=94</td>
+      <td><span class="wr" style="color:#d32f2f">40-44</span></td>
+      <td><span class="wr" style="color:#d32f2f">81%</span></td>
+      <td class="ci">n=102</td>
+    </tr><tr>
+      <td>09:00</td>
+      <td><span class="wr" style="color:#66bb6a">45-49</span></td>
+      <td><span class="wr" style="color:#66bb6a">92%</span></td>
+      <td class="ci">n=90</td>
+      <td><span class="wr" style="color:#fb8c00">50-54</span></td>
+      <td><span class="wr" style="color:#fb8c00">83%</span></td>
+      <td class="ci">n=110</td>
+    </tr><tr>
+      <td>10:00</td>
+      <td><span class="wr" style="color:#66bb6a">10-14</span></td>
+      <td><span class="wr" style="color:#66bb6a">94%</span></td>
+      <td class="ci">n=98</td>
+      <td><span class="wr" style="color:#fb8c00">15-19</span></td>
+      <td><span class="wr" style="color:#fb8c00">84%</span></td>
+      <td class="ci">n=100</td>
+    </tr><tr>
+      <td>11:00</td>
+      <td><span class="wr" style="color:#66bb6a">35-39</span></td>
+      <td><span class="wr" style="color:#66bb6a">92%</span></td>
+      <td class="ci">n=95</td>
+      <td><span class="wr" style="color:#d32f2f">55-59</span></td>
+      <td><span class="wr" style="color:#d32f2f">82%</span></td>
+      <td class="ci">n=94</td>
+    </tr><tr>
+      <td>12:00</td>
+      <td><span class="wr" style="color:#2e7d32">25-29</span></td>
+      <td><span class="wr" style="color:#2e7d32">95%</span></td>
+      <td class="ci">n=93</td>
+      <td><span class="wr" style="color:#fb8c00">50-54</span></td>
+      <td><span class="wr" style="color:#fb8c00">83%</span></td>
+      <td class="ci">n=95</td>
+    </tr><tr>
+      <td>13:00</td>
+      <td><span class="wr" style="color:#66bb6a">00-04</span></td>
+      <td><span class="wr" style="color:#66bb6a">93%</span></td>
+      <td class="ci">n=102</td>
+      <td><span class="wr" style="color:#d32f2f">10-14</span></td>
+      <td><span class="wr" style="color:#d32f2f">81%</span></td>
+      <td class="ci">n=97</td>
+    </tr><tr>
+      <td>14:00</td>
+      <td><span class="wr" style="color:#2e7d32">35-39</span></td>
+      <td><span class="wr" style="color:#2e7d32">95%</span></td>
+      <td class="ci">n=92</td>
+      <td><span class="wr" style="color:#fb8c00">55-59</span></td>
+      <td><span class="wr" style="color:#fb8c00">83%</span></td>
+      <td class="ci">n=90</td>
+    </tr><tr>
+      <td>15:00</td>
+      <td><span class="wr" style="color:#66bb6a">05-09</span></td>
+      <td><span class="wr" style="color:#66bb6a">91%</span></td>
+      <td class="ci">n=91</td>
+      <td><span class="wr" style="color:#fb8c00">55-59</span></td>
+      <td><span class="wr" style="color:#fb8c00">86%</span></td>
+      <td class="ci">n=98</td>
+    </tr><tr>
+      <td>16:00</td>
+      <td><span class="wr" style="color:#2e7d32">10-14</span></td>
+      <td><span class="wr" style="color:#2e7d32">96%</span></td>
+      <td class="ci">n=94</td>
+      <td><span class="wr" style="color:#d32f2f">05-09</span></td>
+      <td><span class="wr" style="color:#d32f2f">77%</span></td>
+      <td class="ci">n=90</td>
+    </tr><tr>
+      <td>17:00</td>
+      <td><span class="wr" style="color:#66bb6a">55-59</span></td>
+      <td><span class="wr" style="color:#66bb6a">91%</span></td>
+      <td class="ci">n=92</td>
+      <td><span class="wr" style="color:#d32f2f">20-24</span></td>
+      <td><span class="wr" style="color:#d32f2f">82%</span></td>
+      <td class="ci">n=99</td>
+    </tr><tr>
+      <td>18:00</td>
+      <td><span class="wr" style="color:#66bb6a">50-54</span></td>
+      <td><span class="wr" style="color:#66bb6a">92%</span></td>
+      <td class="ci">n=104</td>
+      <td><span class="wr" style="color:#fb8c00">25-29</span></td>
+      <td><span class="wr" style="color:#fb8c00">82%</span></td>
+      <td class="ci">n=96</td>
+    </tr><tr>
+      <td>19:00</td>
+      <td><span class="wr" style="color:#2e7d32">40-44</span></td>
+      <td><span class="wr" style="color:#2e7d32">96%</span></td>
+      <td class="ci">n=95</td>
+      <td><span class="wr" style="color:#fb8c00">10-14</span></td>
+      <td><span class="wr" style="color:#fb8c00">84%</span></td>
+      <td class="ci">n=97</td>
+    </tr><tr>
+      <td>20:00</td>
+      <td><span class="wr" style="color:#2e7d32">25-29</span></td>
+      <td><span class="wr" style="color:#2e7d32">94%</span></td>
+      <td class="ci">n=86</td>
+      <td><span class="wr" style="color:#d32f2f">20-24</span></td>
+      <td><span class="wr" style="color:#d32f2f">80%</span></td>
+      <td class="ci">n=99</td>
+    </tr><tr>
+      <td>21:00</td>
+      <td><span class="wr" style="color:#2e7d32">45-49</span></td>
+      <td><span class="wr" style="color:#2e7d32">94%</span></td>
+      <td class="ci">n=106</td>
+      <td><span class="wr" style="color:#d32f2f">50-54</span></td>
+      <td><span class="wr" style="color:#d32f2f">80%</span></td>
+      <td class="ci">n=96</td>
+    </tr><tr>
+      <td>22:00</td>
+      <td><span class="wr" style="color:#66bb6a">15-19</span></td>
+      <td><span class="wr" style="color:#66bb6a">92%</span></td>
+      <td class="ci">n=84</td>
+      <td><span class="wr" style="color:#fb8c00">55-59</span></td>
+      <td><span class="wr" style="color:#fb8c00">84%</span></td>
+      <td class="ci">n=101</td>
+    </tr><tr>
+      <td>23:00</td>
+      <td><span class="wr" style="color:#66bb6a">15-19</span></td>
+      <td><span class="wr" style="color:#66bb6a">92%</span></td>
+      <td class="ci">n=89</td>
+      <td><span class="wr" style="color:#d32f2f">00-04</span></td>
+      <td><span class="wr" style="color:#d32f2f">82%</span></td>
+      <td class="ci">n=82</td>
+    </tr>
+    </table>
+    
+    <div class="today-stats">
+      Most commonly best: <b>:00-04, :05-09, :10-14</b> &middot;
+      Most commonly avoid: <b>:00-04, :05-09, :10-14</b>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>🗺️ Heatmap — Win Rate % by Day &amp; Hour (GMT+4)</h2>
+  <div class="legend">
+    <span><span class="swatch" style="background:#1b5e20"></span>97%+</span>
+    <span><span class="swatch" style="background:#2e7d32"></span>94-97%</span>
+    <span><span class="swatch" style="background:#66bb6a"></span>90-94%</span>
+    <span><span class="swatch" style="background:#fdd835"></span>86-90%</span>
+    <span><span class="swatch" style="background:#fb8c00"></span>82-86%</span>
+    <span><span class="swatch" style="background:#d32f2f"></span>&lt;82%</span>
+    <span style="color:#555">(dimmed = low sample)</span>
+  </div>
+  <table class='heatmap'><tr><th></th><th>00</th><th>01</th><th>02</th><th>03</th><th>04</th><th>05</th><th>06</th><th>07</th><th>08</th><th>09</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>19</th><th>20</th><th>21</th><th>22</th><th>23</th></tr><tr><td class='day-label'>Mon</td><td class="hcell" style="background:#fdd835" title="Mon 00:00 — 89.6% (n=193, 173W/20L)">90</td><td class="hcell" style="background:#66bb6a" title="Mon 01:00 — 91.1% (n=190, 173W/17L)">91</td><td class="hcell" style="background:#66bb6a" title="Mon 02:00 — 90.5% (n=190, 172W/18L)">90</td><td class="hcell" style="background:#fdd835" title="Mon 03:00 — 86.4% (n=198, 171W/27L)">86</td><td class="hcell" style="background:#fdd835" title="Mon 04:00 — 89.1% (n=193, 172W/21L)">89</td><td class="hcell" style="background:#66bb6a" title="Mon 05:00 — 90.3% (n=195, 176W/19L)">90</td><td class="hcell" style="background:#fdd835" title="Mon 06:00 — 86.1% (n=194, 167W/27L)">86</td><td class="hcell" style="background:#66bb6a" title="Mon 07:00 — 92.3% (n=181, 167W/14L)">92</td><td class="hcell" style="background:#fb8c00" title="Mon 08:00 — 84.9% (n=185, 157W/28L)">85</td><td class="hcell" style="background:#fdd835" title="Mon 09:00 — 87.8% (n=180, 158W/22L)">88</td><td class="hcell" style="background:#fdd835" title="Mon 10:00 — 87.8% (n=172, 151W/21L)">88</td><td class="hcell" style="background:#fdd835" title="Mon 11:00 — 87.8% (n=164, 144W/20L)">88</td><td class="hcell" style="background:#fdd835" title="Mon 12:00 — 87.8% (n=172, 151W/21L)">88</td><td class="hcell" style="background:#66bb6a" title="Mon 13:00 — 90.0% (n=170, 153W/17L)">90</td><td class="hcell" style="background:#fdd835" title="Mon 14:00 — 88.0% (n=167, 147W/20L)">88</td><td class="hcell" style="background:#66bb6a" title="Mon 15:00 — 90.1% (n=171, 154W/17L)">90</td><td class="hcell" style="background:#fb8c00" title="Mon 16:00 — 85.4% (n=185, 158W/27L)">85</td><td class="hcell" style="background:#fdd835" title="Mon 17:00 — 89.3% (n=169, 151W/18L)">89</td><td class="hcell" style="background:#fdd835" title="Mon 18:00 — 88.8% (n=179, 159W/20L)">89</td><td class="hcell" style="background:#66bb6a" title="Mon 19:00 — 90.6% (n=180, 163W/17L)">91</td><td class="hcell" style="background:#66bb6a" title="Mon 20:00 — 91.7% (n=193, 177W/16L)">92</td><td class="hcell" style="background:#66bb6a" title="Mon 21:00 — 90.6% (n=181, 164W/17L)">91</td><td class="hcell" style="background:#fb8c00" title="Mon 22:00 — 83.4% (n=175, 146W/29L)">83</td><td class="hcell" style="background:#fdd835" title="Mon 23:00 — 88.1% (n=168, 148W/20L)">88</td></tr><tr><td class='day-label'>Tue</td><td class="hcell" style="background:#fdd835" title="Tue 00:00 — 89.2% (n=166, 148W/18L)">89</td><td class="hcell" style="background:#fdd835" title="Tue 01:00 — 89.3% (n=168, 150W/18L)">89</td><td class="hcell" style="background:#fdd835" title="Tue 02:00 — 88.8% (n=160, 142W/18L)">89</td><td class="hcell" style="background:#fb8c00" title="Tue 03:00 — 85.7% (n=168, 144W/24L)">86</td><td class="hcell" style="background:#66bb6a" title="Tue 04:00 — 91.6% (n=166, 152W/14L)">92</td><td class="hcell" style="background:#fdd835" title="Tue 05:00 — 88.6% (n=167, 148W/19L)">89</td><td class="hcell" style="background:#fdd835" title="Tue 06:00 — 88.4% (n=172, 152W/20L)">88</td><td class="hcell" style="background:#fb8c00" title="Tue 07:00 — 84.7% (n=176, 149W/27L)">85</td><td class="hcell" style="background:#fdd835" title="Tue 08:00 — 87.9% (n=182, 160W/22L)">88</td><td class="hcell" style="background:#fb8c00" title="Tue 09:00 — 85.1% (n=168, 143W/25L)">85</td><td class="hcell" style="background:#fdd835" title="Tue 10:00 — 89.9% (n=178, 160W/18L)">90</td><td class="hcell" style="background:#66bb6a" title="Tue 11:00 — 90.1% (n=182, 164W/18L)">90</td><td class="hcell" style="background:#fdd835" title="Tue 12:00 — 89.0% (n=172, 153W/19L)">89</td><td class="hcell" style="background:#fdd835" title="Tue 13:00 — 88.0% (n=150, 132W/18L)">88</td><td class="hcell" style="background:#66bb6a" title="Tue 14:00 — 90.5% (n=147, 133W/14L)">90</td><td class="hcell" style="background:#66bb6a" title="Tue 15:00 — 90.7% (n=150, 136W/14L)">91</td><td class="hcell" style="background:#fdd835" title="Tue 16:00 — 88.1% (n=151, 133W/18L)">88</td><td class="hcell" style="background:#fdd835" title="Tue 17:00 — 88.6% (n=149, 132W/17L)">89</td><td class="hcell" style="background:#fdd835" title="Tue 18:00 — 86.4% (n=154, 133W/21L)">86</td><td class="hcell" style="background:#fdd835" title="Tue 19:00 — 89.8% (n=157, 141W/16L)">90</td><td class="hcell" style="background:#66bb6a" title="Tue 20:00 — 90.4% (n=146, 132W/14L)">90</td><td class="hcell" style="background:#fb8c00" title="Tue 21:00 — 85.1% (n=168, 143W/25L)">85</td><td class="hcell" style="background:#fdd835" title="Tue 22:00 — 88.8% (n=178, 158W/20L)">89</td><td class="hcell" style="background:#d32f2f" title="Tue 23:00 — 78.1% (n=169, 132W/37L)">78</td></tr><tr><td class='day-label'>Wed</td><td class="hcell" style="background:#fdd835" title="Wed 00:00 — 86.4% (n=177, 153W/24L)">86</td><td class="hcell" style="background:#d32f2f" title="Wed 01:00 — 81.5% (n=168, 137W/31L)">82</td><td class="hcell" style="background:#66bb6a" title="Wed 02:00 — 91.5% (n=153, 140W/13L)">92</td><td class="hcell" style="background:#66bb6a" title="Wed 03:00 — 91.5% (n=165, 151W/14L)">92</td><td class="hcell" style="background:#66bb6a" title="Wed 04:00 — 90.8% (n=163, 148W/15L)">91</td><td class="hcell" style="background:#66bb6a" title="Wed 05:00 — 91.3% (n=161, 147W/14L)">91</td><td class="hcell" style="background:#fb8c00" title="Wed 06:00 — 84.2% (n=171, 144W/27L)">84</td><td class="hcell" style="background:#66bb6a" title="Wed 07:00 — 90.1% (n=171, 154W/17L)">90</td><td class="hcell" style="background:#fdd835" title="Wed 08:00 — 89.8% (n=167, 150W/17L)">90</td><td class="hcell" style="background:#fdd835" title="Wed 09:00 — 88.1% (n=168, 148W/20L)">88</td><td class="hcell" style="background:#fdd835" title="Wed 10:00 — 88.4% (n=172, 152W/20L)">88</td><td class="hcell" style="background:#fdd835" title="Wed 11:00 — 86.7% (n=181, 157W/24L)">87</td><td class="hcell" style="background:#fdd835" title="Wed 12:00 — 86.1% (n=173, 149W/24L)">86</td><td class="hcell" style="background:#fdd835" title="Wed 13:00 — 86.8% (n=182, 158W/24L)">87</td><td class="hcell" style="background:#fdd835" title="Wed 14:00 — 87.1% (n=178, 155W/23L)">87</td><td class="hcell" style="background:#fdd835" title="Wed 15:00 — 86.0% (n=172, 148W/24L)">86</td><td class="hcell" style="background:#66bb6a" title="Wed 16:00 — 90.3% (n=175, 158W/17L)">90</td><td class="hcell" style="background:#fb8c00" title="Wed 17:00 — 85.7% (n=175, 150W/25L)">86</td><td class="hcell" style="background:#fdd835" title="Wed 18:00 — 89.3% (n=187, 167W/20L)">89</td><td class="hcell" style="background:#fdd835" title="Wed 19:00 — 88.6% (n=184, 163W/21L)">89</td><td class="hcell" style="background:#fb8c00" title="Wed 20:00 — 84.6% (n=175, 148W/27L)">85</td><td class="hcell" style="background:#fb8c00" title="Wed 21:00 — 85.7% (n=182, 156W/26L)">86</td><td class="hcell" style="background:#66bb6a" title="Wed 22:00 — 90.7% (n=182, 165W/17L)">91</td><td class="hcell" style="background:#fdd835" title="Wed 23:00 — 88.3% (n=179, 158W/21L)">88</td></tr><tr><td class='day-label'>Thu</td><td class="hcell" style="background:#fdd835" title="Thu 00:00 — 87.7% (n=179, 157W/22L)">88</td><td class="hcell" style="background:#fb8c00" title="Thu 01:00 — 85.1% (n=188, 160W/28L)">85</td><td class="hcell" style="background:#66bb6a" title="Thu 02:00 — 91.1% (n=180, 164W/16L)">91</td><td class="hcell" style="background:#66bb6a" title="Thu 03:00 — 91.8% (n=184, 169W/15L)">92</td><td class="hcell" style="background:#fdd835" title="Thu 04:00 — 86.4% (n=184, 159W/25L)">86</td><td class="hcell" style="background:#fdd835" title="Thu 05:00 — 86.0% (n=193, 166W/27L)">86</td><td class="hcell" style="background:#fdd835" title="Thu 06:00 — 88.8% (n=188, 167W/21L)">89</td><td class="hcell" style="background:#fdd835" title="Thu 07:00 — 87.4% (n=190, 166W/24L)">87</td><td class="hcell" style="background:#66bb6a" title="Thu 08:00 — 93.3% (n=193, 180W/13L)">93</td><td class="hcell" style="background:#fdd835" title="Thu 09:00 — 89.1% (n=192, 171W/21L)">89</td><td class="hcell" style="background:#fdd835" title="Thu 10:00 — 87.3% (n=189, 165W/24L)">87</td><td class="hcell" style="background:#fdd835" title="Thu 11:00 — 89.6% (n=183, 164W/19L)">90</td><td class="hcell" style="background:#fb8c00" title="Thu 12:00 — 85.2% (n=182, 155W/27L)">85</td><td class="hcell" style="background:#fdd835" title="Thu 13:00 — 87.4% (n=175, 153W/22L)">87</td><td class="hcell" style="background:#fdd835" title="Thu 14:00 — 89.2% (n=167, 149W/18L)">89</td><td class="hcell" style="background:#fdd835" title="Thu 15:00 — 87.9% (n=174, 153W/21L)">88</td><td class="hcell" style="background:#66bb6a" title="Thu 16:00 — 91.9% (n=172, 158W/14L)">92</td><td class="hcell" style="background:#fdd835" title="Thu 17:00 — 89.4% (n=170, 152W/18L)">89</td><td class="hcell" style="background:#fb8c00" title="Thu 18:00 — 85.5% (n=165, 141W/24L)">86</td><td class="hcell" style="background:#fdd835" title="Thu 19:00 — 89.8% (n=166, 149W/17L)">90</td><td class="hcell" style="background:#fdd835" title="Thu 20:00 — 86.6% (n=179, 155W/24L)">87</td><td class="hcell" style="background:#66bb6a" title="Thu 21:00 — 91.4% (n=187, 171W/16L)">91</td><td class="hcell" style="background:#fdd835" title="Thu 22:00 — 89.9% (n=178, 160W/18L)">90</td><td class="hcell" style="background:#fdd835" title="Thu 23:00 — 89.9% (n=168, 151W/17L)">90</td></tr><tr><td class='day-label'>Fri</td><td class="hcell" style="background:#fb8c00" title="Fri 00:00 — 82.6% (n=155, 128W/27L)">83</td><td class="hcell" style="background:#66bb6a" title="Fri 01:00 — 92.2% (n=153, 141W/12L)">92</td><td class="hcell" style="background:#fdd835" title="Fri 02:00 — 86.1% (n=151, 130W/21L)">86</td><td class="hcell" style="background:#fdd835" title="Fri 03:00 — 86.8% (n=151, 131W/20L)">87</td><td class="hcell" style="background:#66bb6a" title="Fri 04:00 — 93.8% (n=160, 150W/10L)">94</td><td class="hcell" style="background:#66bb6a" title="Fri 05:00 — 92.0% (n=162, 149W/13L)">92</td><td class="hcell" style="background:#66bb6a" title="Fri 06:00 — 90.2% (n=163, 147W/16L)">90</td><td class="hcell" style="background:#66bb6a" title="Fri 07:00 — 90.6% (n=170, 154W/16L)">91</td><td class="hcell" style="background:#fdd835" title="Fri 08:00 — 88.6% (n=175, 155W/20L)">89</td><td class="hcell" style="background:#fdd835" title="Fri 09:00 — 89.7% (n=165, 148W/17L)">90</td><td class="hcell" style="background:#fdd835" title="Fri 10:00 — 87.9% (n=165, 145W/20L)">88</td><td class="hcell" style="background:#fb8c00" title="Fri 11:00 — 84.1% (n=157, 132W/25L)">84</td><td class="hcell" style="background:#fdd835" title="Fri 12:00 — 86.1% (n=166, 143W/23L)">86</td><td class="hcell" style="background:#fdd835" title="Fri 13:00 — 88.3% (n=179, 158W/21L)">88</td><td class="hcell" style="background:#fdd835" title="Fri 14:00 — 87.4% (n=167, 146W/21L)">87</td><td class="hcell" style="background:#fdd835" title="Fri 15:00 — 89.7% (n=155, 139W/16L)">90</td><td class="hcell" style="background:#fdd835" title="Fri 16:00 — 87.9% (n=157, 138W/19L)">88</td><td class="hcell" style="background:#fdd835" title="Fri 17:00 — 87.2% (n=156, 136W/20L)">87</td><td class="hcell" style="background:#fdd835" title="Fri 18:00 — 86.2% (n=160, 138W/22L)">86</td><td class="hcell" style="background:#fdd835" title="Fri 19:00 — 89.9% (n=169, 152W/17L)">90</td><td class="hcell" style="background:#fdd835" title="Fri 20:00 — 87.8% (n=172, 151W/21L)">88</td><td class="hcell" style="background:#66bb6a" title="Fri 21:00 — 91.0% (n=167, 152W/15L)">91</td><td class="hcell" style="background:#66bb6a" title="Fri 22:00 — 92.5% (n=173, 160W/13L)">92</td><td class="hcell" style="background:#fb8c00" title="Fri 23:00 — 85.1% (n=174, 148W/26L)">85</td></tr><tr><td class='day-label'>Sat</td><td class="hcell" style="background:#66bb6a" title="Sat 00:00 — 91.2% (n=170, 155W/15L)">91</td><td class="hcell" style="background:#fdd835" title="Sat 01:00 — 89.3% (n=169, 151W/18L)">89</td><td class="hcell" style="background:#fdd835" title="Sat 02:00 — 88.2% (n=161, 142W/19L)">88</td><td class="hcell" style="background:#fdd835" title="Sat 03:00 — 89.8% (n=167, 150W/17L)">90</td><td class="hcell" style="background:#fb8c00" title="Sat 04:00 — 85.0% (n=160, 136W/24L)">85</td><td class="hcell" style="background:#fdd835" title="Sat 05:00 — 87.7% (n=163, 143W/20L)">88</td><td class="hcell" style="background:#fdd835" title="Sat 06:00 — 87.1% (n=171, 149W/22L)">87</td><td class="hcell" style="background:#66bb6a" title="Sat 07:00 — 92.9% (n=168, 156W/12L)">93</td><td class="hcell" style="background:#fdd835" title="Sat 08:00 — 86.9% (n=176, 153W/23L)">87</td><td class="hcell" style="background:#66bb6a" title="Sat 09:00 — 90.4% (n=167, 151W/16L)">90</td><td class="hcell" style="background:#fdd835" title="Sat 10:00 — 86.7% (n=173, 150W/23L)">87</td><td class="hcell" style="background:#66bb6a" title="Sat 11:00 — 92.3% (n=169, 156W/13L)">92</td><td class="hcell" style="background:#fdd835" title="Sat 12:00 — 88.2% (n=170, 150W/20L)">88</td><td class="hcell" style="background:#fb8c00" title="Sat 13:00 — 84.7% (n=177, 150W/27L)">85</td><td class="hcell" style="background:#fdd835" title="Sat 14:00 — 87.6% (n=177, 155W/22L)">88</td><td class="hcell" style="background:#fb8c00" title="Sat 15:00 — 82.8% (n=169, 140W/29L)">83</td><td class="hcell" style="background:#66bb6a" title="Sat 16:00 — 92.9% (n=169, 157W/12L)">93</td><td class="hcell" style="background:#fdd835" title="Sat 17:00 — 89.0% (n=181, 161W/20L)">89</td><td class="hcell" style="background:#66bb6a" title="Sat 18:00 — 92.8% (n=181, 168W/13L)">93</td><td class="hcell" style="background:#fb8c00" title="Sat 19:00 — 84.8% (n=171, 145W/26L)">85</td><td class="hcell" style="background:#fdd835" title="Sat 20:00 — 88.0% (n=166, 146W/20L)">88</td><td class="hcell" style="background:#fdd835" title="Sat 21:00 — 89.7% (n=174, 156W/18L)">90</td><td class="hcell" style="background:#fdd835" title="Sat 22:00 — 86.4% (n=169, 146W/23L)">86</td><td class="hcell" style="background:#fdd835" title="Sat 23:00 — 89.2% (n=167, 149W/18L)">89</td></tr><tr><td class='day-label'>Sun</td><td class="hcell" style="background:#fdd835" title="Sun 00:00 — 87.4% (n=183, 160W/23L)">87</td><td class="hcell" style="background:#fdd835" title="Sun 01:00 — 89.2% (n=176, 157W/19L)">89</td><td class="hcell" style="background:#fdd835" title="Sun 02:00 — 88.8% (n=170, 151W/19L)">89</td><td class="hcell" style="background:#fb8c00" title="Sun 03:00 — 85.9% (n=170, 146W/24L)">86</td><td class="hcell" style="background:#fdd835" title="Sun 04:00 — 88.3% (n=179, 158W/21L)">88</td><td class="hcell" style="background:#fdd835" title="Sun 05:00 — 86.3% (n=183, 158W/25L)">86</td><td class="hcell" style="background:#fb8c00" title="Sun 06:00 — 84.1% (n=182, 153W/29L)">84</td><td class="hcell" style="background:#fb8c00" title="Sun 07:00 — 83.8% (n=179, 150W/29L)">84</td><td class="hcell" style="background:#66bb6a" title="Sun 08:00 — 90.6% (n=181, 164W/17L)">91</td><td class="hcell" style="background:#66bb6a" title="Sun 09:00 — 92.6% (n=175, 162W/13L)">93</td><td class="hcell" style="background:#fdd835" title="Sun 10:00 — 87.7% (n=179, 157W/22L)">88</td><td class="hcell" style="background:#fdd835" title="Sun 11:00 — 88.7% (n=177, 157W/20L)">89</td><td class="hcell" style="background:#fdd835" title="Sun 12:00 — 87.4% (n=183, 160W/23L)">87</td><td class="hcell" style="background:#fdd835" title="Sun 13:00 — 88.0% (n=175, 154W/21L)">88</td><td class="hcell" style="background:#66bb6a" title="Sun 14:00 — 92.8% (n=181, 168W/13L)">93</td><td class="hcell" style="background:#fdd835" title="Sun 15:00 — 88.6% (n=185, 164W/21L)">89</td><td class="hcell" style="background:#66bb6a" title="Sun 16:00 — 93.8% (n=193, 181W/12L)">94</td><td class="hcell" style="background:#fdd835" title="Sun 17:00 — 86.4% (n=198, 171W/27L)">86</td><td class="hcell" style="background:#fdd835" title="Sun 18:00 — 87.6% (n=194, 170W/24L)">88</td><td class="hcell" style="background:#66bb6a" title="Sun 19:00 — 91.5% (n=200, 183W/17L)">92</td><td class="hcell" style="background:#fdd835" title="Sun 20:00 — 87.8% (n=197, 173W/24L)">88</td><td class="hcell" style="background:#fdd835" title="Sun 21:00 — 87.3% (n=197, 172W/25L)">87</td><td class="hcell" style="background:#66bb6a" title="Sun 22:00 — 90.1% (n=203, 183W/20L)">90</td><td class="hcell" style="background:#fdd835" title="Sun 23:00 — 87.8% (n=188, 165W/23L)">88</td></tr></table>
+</div>
+
+<div class="footer">
+  Interactive server · <code>python3 server.py</code> &middot; <code>python3 dashboard.py</code> to refresh HTML
+</div>
+
+</div>
+</body>
+</html>
