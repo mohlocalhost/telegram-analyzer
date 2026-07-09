@@ -35,6 +35,17 @@ def seed_dashboard():
 
 def seed_keys():
     path = os.path.join(DIR, "api_keys.json")
+    # If env var has keys, use it (Railway persistence)
+    env_keys = os.environ.get("API_KEYS_JSON")
+    if env_keys:
+        try:
+            keys = json.loads(env_keys)
+            with open(path, "w") as f:
+                json.dump(keys, f, indent=2)
+            print(f"Loaded {len(keys)} API keys from env var")
+            return
+        except json.JSONDecodeError:
+            print("Warning: invalid API_KEYS_JSON env var")
     if not os.path.exists(path):
         with open(path, "w") as f:
             json.dump({}, f)
