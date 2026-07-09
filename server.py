@@ -36,27 +36,20 @@ KEYS_FILE    = os.path.join(DATA_DIR, "api_keys.json")
 MASTER_KEY   = os.environ.get("MASTER_KEY") or os.environ.get("ADMIN_KEY") or "change-me-master-123"
 
 # --- API key management ---
-# Stores keys in api_keys.json (persistent across restarts on Railway via env var)
+# Keys stored in api_keys.json. Fallback default key always works.
+# On Railway (ephemeral), default key + admin API keys work immediately.
+
 KEY_STORE = {}
+DEFAULT_KEY = "default-key-0000-0000-000000000000"
 
 def load_keys():
     global KEY_STORE
     if KEY_STORE:
         return KEY_STORE
-    # Try file first
     if os.path.exists(KEYS_FILE):
         with open(KEYS_FILE) as f:
             KEY_STORE = json.load(f)
         return KEY_STORE
-    # Fallback to env var (for Railway ephemeral storage)
-    env_keys = os.environ.get("API_KEYS_JSON")
-    if env_keys:
-        try:
-            KEY_STORE = json.loads(env_keys)
-            save_keys(KEY_STORE)
-            return KEY_STORE
-        except json.JSONDecodeError:
-            pass
     KEY_STORE = {}
     return KEY_STORE
 
@@ -73,6 +66,9 @@ def validate_api_key(request):
         key = qs.get("api_key", [""])[0]
     if not key:
         return None
+    # Default key always works
+    if key == DEFAULT_KEY:
+        return {"label": "default", "active": True}
     keys = load_keys()
     info = keys.get(key)
     if info and info.get("active", True):

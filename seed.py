@@ -35,40 +35,18 @@ def seed_dashboard():
 
 def seed_keys():
     path = os.path.join(DIR, "api_keys.json")
-    # If env var has keys, use it (Railway persistence)
-    env_keys = os.environ.get("API_KEYS_JSON")
-    if env_keys:
+    # Preserve existing keys, don't create empty
+    if os.path.exists(path):
         try:
-            keys = json.loads(env_keys)
-            with open(path, "w") as f:
-                json.dump(keys, f, indent=2)
-            print(f"Loaded {len(keys)} API keys from env var")
-            return
+            with open(path) as f:
+                existing = json.load(f)
+            if existing:
+                print(f"Keys file exists ({len(existing)} keys)")
+                return
         except json.JSONDecodeError:
-            print("Warning: invalid API_KEYS_JSON env var")
-    if not os.path.exists(path):
-        with open(path, "w") as f:
-            json.dump({}, f)
-        print(f"Created {path} (empty)")
-    else:
-        # Preserve existing keys
-        with open(path) as f:
-            existing = json.load(f)
-        if not existing:
-            # Create a default admin key if empty
-            import uuid
-            from datetime import datetime, timezone
-            key = str(uuid.uuid4())
-            existing[key] = {
-                "label": "auto-generated",
-                "created": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                "active": True,
-            }
-            with open(path, "w") as f:
-                json.dump(existing, f, indent=2)
-            print(f"Created default API key in {path}")
-        else:
-            print(f"Keys file exists ({len(existing)} keys)")
+            pass
+    # Don't create empty file - server.py handles default key
+    print(f"No api_keys.json - server will use default key")
 
 if __name__ == "__main__":
     seed_signals()
