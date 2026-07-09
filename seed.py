@@ -39,6 +39,25 @@ def seed_keys():
         with open(path, "w") as f:
             json.dump({}, f)
         print(f"Created {path} (empty)")
+    else:
+        # Preserve existing keys
+        with open(path) as f:
+            existing = json.load(f)
+        if not existing:
+            # Create a default admin key if empty
+            import uuid
+            from datetime import datetime, timezone
+            key = str(uuid.uuid4())
+            existing[key] = {
+                "label": "auto-generated",
+                "created": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "active": True,
+            }
+            with open(path, "w") as f:
+                json.dump(existing, f, indent=2)
+            print(f"Created default API key in {path}")
+        else:
+            print(f"Keys file exists ({len(existing)} keys)")
 
 if __name__ == "__main__":
     seed_signals()

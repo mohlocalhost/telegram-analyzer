@@ -24,7 +24,7 @@ Endpoints:
 """
 import argparse, csv, json, os, subprocess, sys, time, uuid
 from collections import defaultdict
-from datetime import datetime, timezone, timedelta, UTC
+from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -36,13 +36,33 @@ KEYS_FILE    = os.path.join(DATA_DIR, "api_keys.json")
 MASTER_KEY   = os.environ.get("MASTER_KEY") or os.environ.get("ADMIN_KEY") or "change-me-master-123"
 
 # --- API key management ---
+# Stores keys in api_keys.json (persistent across restarts on Railway via env var)
+KEY_STORE = {}
+
 def load_keys():
-    if not os.path.exists(KEYS_FILE):
-        return {}
-    with open(KEYS_FILE) as f:
-        return json.load(f)
+    global KEY_STORE
+    if KEY_STORE:
+        return KEY_STORE
+    # Try file first
+    if os.path.exists(KEYS_FILE):
+        with open(KEYS_FILE) as f:
+            KEY_STORE = json.load(f)
+        return KEY_STORE
+    # Fallback to env var (for Railway ephemeral storage)
+    env_keys = os.environ.get("API_KEYS_JSON")
+    if env_keys:
+        try:
+            KEY_STORE = json.loads(env_keys)
+            save_keys(KEY_STORE)
+            return KEY_STORE
+        except json.JSONDecodeError:
+            pass
+    KEY_STORE = {}
+    return KEY_STORE
 
 def save_keys(keys):
+    global KEY_STORE
+    KEY_STORE = keys
     with open(KEYS_FILE, "w") as f:
         json.dump(keys, f, indent=2)
 
