@@ -180,8 +180,8 @@ class APIHandler(SimpleHTTPRequestHandler):
         path = parsed.path.rstrip("/")
         qs = parse_qs(parsed.query)
 
-        # Public: dashboard page
-        if path == "/dashboard.html" or path == "" or path == "/":
+        # Public: dashboard pages
+        if path in ("/dashboard.html", "/client.html", "") or path == "/":
             return super().do_GET()
 
         # Public: status (no key needed)
