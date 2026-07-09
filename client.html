@@ -8,40 +8,18 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0f0f0f; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; min-height: 100vh; }
   .container { max-width: 800px; margin: 0 auto; padding: 20px 16px; }
-
-  /* Login */
-  .login-card { background: #1a1a2e; border-radius: 16px; padding: 40px 24px; text-align: center; margin-top: 80px; }
-  .login-card h1 { font-size: 24px; color: #fff; margin-bottom: 8px; }
-  .login-card p { color: #888; font-size: 13px; margin-bottom: 24px; }
-  .login-card input { width: 100%; max-width: 380px; padding: 14px 16px; border-radius: 10px; border: 1px solid #333; background: #0f0f1f; color: #fff; font-size: 15px; font-family: monospace; text-align: center; outline: none; }
-  .login-card input:focus { border-color: #4caf50; }
-  .login-card .btn { display: inline-block; margin-top: 14px; padding: 12px 40px; border-radius: 10px; background: #4caf50; color: #fff; font-size: 15px; font-weight: 600; border: none; cursor: pointer; }
-  .login-card .btn:hover { background: #43a047; }
-  .login-card .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .login-error { color: #e57373; font-size: 13px; margin-top: 12px; display: none; }
-  .login-card .sub { color: #555; font-size: 11px; margin-top: 20px; }
-  .login-card .sub a { color: #666; }
-
-  /* Dashboard */
-  .dash { display: none; }
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 8px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
   .header h1 { font-size: 20px; color: #fff; }
-  .header .key-badge { font-size: 11px; color: #666; font-family: monospace; background: #1a1a1a; padding: 4px 10px; border-radius: 6px; }
-  .header .logout { font-size: 12px; color: #888; cursor: pointer; padding: 4px 12px; border-radius: 6px; border: 1px solid #333; background: none; }
-  .header .logout:hover { color: #e57373; border-color: #e57373; }
-
+  .header .live { font-size: 11px; color: #4caf50; }
   .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
   .stat-card { background: #1a1a1a; border-radius: 10px; padding: 14px; text-align: center; }
   .stat-card .num { font-size: 22px; font-weight: 700; color: #fff; }
   .stat-card .lbl { font-size: 11px; color: #888; margin-top: 2px; }
-
   .card { background: #1a1a1a; border-radius: 12px; padding: 14px; margin-bottom: 14px; }
   .card h2 { font-size: 14px; color: #bbb; margin-bottom: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th { text-align: left; padding: 6px 4px; color: #666; font-weight: 500; border-bottom: 1px solid #222; font-size: 11px; }
   td { padding: 6px 4px; border-bottom: 1px solid #181818; }
-
   .slot-day { color: #888; width: 32px; }
   .slot-hour { font-weight: 600; color: #ccc; }
   .slot-wr { font-weight: 700; }
@@ -50,25 +28,19 @@
   .wr-high { color: #4caf50; }
   .wr-mid { color: #ffc107; }
   .wr-low { color: #e57373; }
-
   .loading { text-align: center; padding: 40px; color: #666; }
   .loading .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #333; border-top-color: #4caf50; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 10px; }
   @keyframes spin { to { transform: rotate(360deg); } }
-
   .error-msg { color: #e57373; background: #2a1515; border-radius: 8px; padding: 12px; font-size: 13px; margin-bottom: 14px; }
-
   .tab-bar { display: flex; gap: 4px; margin-bottom: 14px; overflow-x: auto; }
   .tab { padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; background: #1a1a1a; color: #888; white-space: nowrap; border: none; }
   .tab.active { background: #2a2a2a; color: #fff; }
-
   .tab-content { display: none; }
   .tab-content.active { display: block; }
-
   .min-block { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin: 1px; font-weight: 600; }
   .min-good { background: #1b3a1b; color: #81c784; }
   .min-bad { background: #3a1b1b; color: #e57373; }
   .min-ok { background: #3a351b; color: #ffd54f; }
-
   @media (max-width: 500px) {
     .stats-row { grid-template-columns: 1fr 1fr; }
     .container { padding: 12px 10px; }
@@ -79,67 +51,37 @@
 <body>
 <div class="container">
 
-<!-- Login -->
-<div id="login">
-  <div class="login-card">
-    <h1>📊 Signal Analysis</h1>
-    <p>Enter your API key to access the dashboard</p>
-    <input id="api-key-input" type="text" placeholder="Paste your API key here" autocomplete="off" spellcheck="false">
-    <div><button class="btn" id="login-btn" onclick="login()">Access Dashboard</button></div>
-    <div id="login-error" class="login-error"></div>
-    <div class="sub">Don't have a key? <a href="#">Contact us</a></div>
-  </div>
+<div class="header">
+  <h1>📊 Signal Analysis</h1>
+  <span class="live">● Live</span>
 </div>
 
-<!-- Dashboard -->
-<div id="dash" class="dash">
-  <div class="header">
-    <h1>📊 Signal Analysis</h1>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span class="key-badge" id="key-badge"></span>
-      <button class="logout" onclick="logout()">Logout</button>
-    </div>
-  </div>
+<div id="dash-error" class="error-msg" style="display:none"></div>
 
-  <div id="dash-error" class="error-msg" style="display:none"></div>
-
-  <!-- Stats -->
-  <div class="stats-row" id="stats-row">
-    <div class="stat-card"><div class="num" id="stat-total">—</div><div class="lbl">Qualified Slots</div></div>
-    <div class="stat-card"><div class="num" id="stat-avg-wr">—</div><div class="lbl">Avg Win Rate</div></div>
-    <div class="stat-card"><div class="num" id="stat-today-wr">—</div><div class="lbl">Today's Avg WR</div></div>
-    <div class="stat-card"><div class="num" id="stat-today-vol">—</div><div class="lbl">Today Signals</div></div>
-  </div>
-
-  <!-- Tabs -->
-  <div class="tab-bar">
-    <button class="tab active" onclick="switchTab('today')">Today</button>
-    <button class="tab" onclick="switchTab('top')">Top 20</button>
-    <button class="tab" onclick="switchTab('avoid')">Avoid</button>
-    <button class="tab" onclick="switchTab('minutes')">Minutes</button>
-  </div>
-
-  <div id="tab-today" class="tab-content active"><div class="loading"><div class="spinner"></div></div></div>
-  <div id="tab-top" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
-  <div id="tab-avoid" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
-  <div id="tab-minutes" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
+<div class="stats-row" id="stats-row">
+  <div class="stat-card"><div class="num" id="stat-total">—</div><div class="lbl">Qualified Slots</div></div>
+  <div class="stat-card"><div class="num" id="stat-avg-wr">—</div><div class="lbl">Avg Win Rate</div></div>
+  <div class="stat-card"><div class="num" id="stat-today-wr">—</div><div class="lbl">Today's Avg WR</div></div>
+  <div class="stat-card"><div class="num" id="stat-today-vol">—</div><div class="lbl">Today Signals</div></div>
 </div>
+
+<div class="tab-bar">
+  <button class="tab active" onclick="switchTab('today')">Today</button>
+  <button class="tab" onclick="switchTab('top')">Top 20</button>
+  <button class="tab" onclick="switchTab('avoid')">Avoid</button>
+  <button class="tab" onclick="switchTab('minutes')">Minutes</button>
+</div>
+
+<div id="tab-today" class="tab-content active"><div class="loading"><div class="spinner"></div></div></div>
+<div id="tab-top" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
+<div id="tab-avoid" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
+<div id="tab-minutes" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
 
 </div>
 
 <script>
 const BASE = '';
-let API_KEY = '';
-
-function showError(msg) {
-  const el = document.getElementById('dash-error');
-  el.textContent = msg;
-  el.style.display = 'block';
-}
-
-function hideError() {
-  document.getElementById('dash-error').style.display = 'none';
-}
+const API_KEY = 'default-key-0000-0000-000000000000';
 
 async function api(path) {
   const r = await fetch(BASE + path + '?api_key=' + encodeURIComponent(API_KEY));
@@ -215,8 +157,8 @@ function switchTab(name) {
 }
 
 async function loadAll() {
-  hideError();
-  document.getElementById('key-badge').textContent = API_KEY.slice(0, 12) + '...';
+  const errEl = document.getElementById('dash-error');
+  errEl.style.display = 'none';
 
   try {
     const [todayData, topData, minData] = await Promise.all([
@@ -225,7 +167,6 @@ async function loadAll() {
       api('/api/v1/minutes'),
     ]);
 
-    // Stats
     const today = todayData.today;
     const todayWr = today.slots.length
       ? (today.slots.reduce((s, x) => s + x.win_rate, 0) / today.slots.length)
@@ -235,7 +176,6 @@ async function loadAll() {
     document.getElementById('stat-today-wr').textContent = todayWr.toFixed(1) + '%';
     document.getElementById('stat-today-vol').textContent = today.slots.length;
 
-    // Today tab
     loadTab('today', async () => {
       const d = await api('/api/v1/today');
       const sorted = d.slots.sort((a, b) => b.win_rate - a.win_rate);
@@ -243,80 +183,29 @@ async function loadAll() {
         renderSlots(sorted, false);
     });
 
-    // Top 20
     loadTab('top', async () => {
       const d = await api('/api/v1/top?n=20&min_samples=30');
       return '<div style="margin-bottom:8px;font-size:12px;color:#666">' + d.total + ' qualified slots (min ' + d.min_samples + ' samples)</div>' +
         renderSlots(d.slots, true);
     });
 
-    // Avoid
     loadTab('avoid', async () => {
       const d = await api('/api/v1/avoid');
       return renderSlots(d.slots, true);
     });
 
-    // Minutes
     loadTab('minutes', async () => {
       const d = await api('/api/v1/minutes');
       return renderMinutes(d);
     });
 
   } catch (e) {
-    showError(e.message || 'Failed to load data');
+    errEl.textContent = e.message || 'Failed to load data';
+    errEl.style.display = 'block';
   }
 }
 
-function login() {
-  const key = document.getElementById('api-key-input').value.trim();
-  if (!key) return;
-
-  const btn = document.getElementById('login-btn');
-  const errEl = document.getElementById('login-error');
-  btn.disabled = true;
-  btn.textContent = 'Checking...';
-  errEl.style.display = 'none';
-
-  API_KEY = key;
-
-  fetch(BASE + '/api/v1/today?api_key=' + encodeURIComponent(key))
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) throw new Error(data.error);
-      localStorage.setItem('signals_api_key', key);
-      document.getElementById('login').style.display = 'none';
-      document.getElementById('dash').style.display = 'block';
-      loadAll();
-    })
-    .catch(e => {
-      errEl.textContent = e.message || 'Invalid key';
-      errEl.style.display = 'block';
-      API_KEY = '';
-    })
-    .finally(() => {
-      btn.disabled = false;
-      btn.textContent = 'Access Dashboard';
-    });
-}
-
-function logout() {
-  localStorage.removeItem('signals_api_key');
-  API_KEY = '';
-  document.getElementById('dash').style.display = 'none';
-  document.getElementById('login').style.display = 'block';
-  document.getElementById('api-key-input').value = '';
-}
-
-// On load: check for saved key
-window.addEventListener('DOMContentLoaded', () => {
-  const saved = localStorage.getItem('signals_api_key');
-  if (saved) {
-    API_KEY = saved;
-    document.getElementById('login').style.display = 'none';
-    document.getElementById('dash').style.display = 'block';
-    loadAll();
-  }
-});
+loadAll();
 </script>
 </body>
 </html>
