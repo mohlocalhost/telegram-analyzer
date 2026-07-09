@@ -188,6 +188,10 @@ class APIHandler(SimpleHTTPRequestHandler):
         if path == "/api/v1/status":
             return self.handle_status()
 
+        # Public: run commands (interactive dashboard buttons)
+        if path == "/api/run":
+            return self.handle_run(qs)
+
         # Admin endpoints
         if path == "/admin/keys":
             mk = qs.get("master", [""])[0] or self.headers.get("X-Master-Key", "")
@@ -265,6 +269,42 @@ class APIHandler(SimpleHTTPRequestHandler):
             "signals_file": sigs,
             "version": "1.0",
         })
+
+    COMMANDS = {
+        "today":   ["--today"],
+        "top20":   [],
+        "by-ci":   ["--by-ci"],
+        "strategy": ["--strategy"],
+        "avoid":   ["--avoid"],
+        "safest":  ["--safest"],
+    }
+
+    def handle_run(self, qs):
+        cmd = qs.get("cmd", [""])[0]
+        args_str = qs.get("args", [""])[0]
+        base_args = self.COMMANDS.get(cmd)
+        if base_args is None:
+            self.send_response(404)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"Unknown command")
+            return
+        full_args = base_args + (args_str.split() if args_str else [])
+        try:
+            r = subprocess.run(
+                ["python3", "best_signals.py"] + full_args,
+                cwd=DATA_DIR, capture_output=True, text=True, timeout=60,
+            )
+            out = r.stdout + r.stderr
+        except subprocess.TimeoutExpired:
+            out = "Command timed out (60s)"
+        except Exception as e:
+            out = f"Error: {e}"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(out.encode())
 
     def handle_today(self):
         rows = filter_slots(load_heatmap())
