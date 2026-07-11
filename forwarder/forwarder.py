@@ -12,8 +12,18 @@ API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
 SESSION_NAME = os.environ.get("SESSION_NAME", "forwarder_session")
 
-SOURCE_CHANNELS = [c.strip() for c in os.environ["SOURCE_CHANNELS"].split(",")]
-DEST_CHANNELS = [c.strip() for c in os.environ["DEST_CHANNELS"].split(",")]
+def _parse_channels(raw):
+    out = []
+    for c in raw.split(","):
+        c = c.strip()
+        if c.lstrip("-").isdigit():
+            out.append(int(c))
+        else:
+            out.append(c)
+    return out
+
+SOURCE_CHANNELS = _parse_channels(os.environ["SOURCE_CHANNELS"])
+DEST_CHANNELS = _parse_channels(os.environ["DEST_CHANNELS"])
 
 logging.basicConfig(
     level=logging.INFO,
