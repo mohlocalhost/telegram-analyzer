@@ -41,6 +41,7 @@
   .min-good { background: #1b3a1b; color: #81c784; }
   .min-bad { background: #3a1b1b; color: #e57373; }
   .min-ok { background: #3a351b; color: #ffd54f; }
+  .report { background: #0a0a0a; border-radius: 8px; padding: 14px; font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.5; white-space: pre; overflow-x: auto; color: #c8d6e5; }
   @media (max-width: 500px) {
     .stats-row { grid-template-columns: 1fr 1fr; }
     .container { padding: 12px 10px; }
@@ -70,12 +71,14 @@
   <button class="tab" onclick="switchTab('top')">Top 20</button>
   <button class="tab" onclick="switchTab('avoid')">Avoid</button>
   <button class="tab" onclick="switchTab('minutes')">Minutes</button>
+  <button class="tab" onclick="switchTab('report')">Today Report</button>
 </div>
 
 <div id="tab-today" class="tab-content active"><div class="loading"><div class="spinner"></div></div></div>
 <div id="tab-top" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
 <div id="tab-avoid" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
 <div id="tab-minutes" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
+<div id="tab-report" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
 
 </div>
 
@@ -89,6 +92,12 @@ async function api(path) {
   const data = await r.json();
   if (data.error) throw new Error(data.error);
   return data;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
 }
 
 function wrClass(wr) {
@@ -198,6 +207,12 @@ async function loadAll() {
     loadTab('minutes', async () => {
       const d = await api('/api/v1/minutes');
       return renderMinutes(d);
+    });
+
+    loadTab('report', async () => {
+      const r = await fetch(BASE + '/api/run?cmd=today');
+      const text = await r.text();
+      return '<div class="report">' + escapeHtml(text) + '</div>';
     });
 
   } catch (e) {
