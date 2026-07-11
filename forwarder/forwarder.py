@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 import sys
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -70,7 +72,23 @@ async def generate_session():
     await client.disconnect()
 
 
+def run_health_server():
+    PORT = int(os.environ.get("PORT", 8080))
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        def log_message(self, *a):
+            pass
+    server = HTTPServer(("0.0.0.0", PORT), HealthHandler)
+    log.info(f"Health server listening on port {PORT}")
+    server.serve_forever()
+
+
 async def main():
+    t = threading.Thread(target=run_health_server, daemon=True)
+    t.start()
     log.info("Starting Telegram forwarder...")
     await client.start()
     log.info("Logged in successfully")
