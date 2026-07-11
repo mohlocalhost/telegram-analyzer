@@ -3,3 +3,4 @@
 api_keys.json
 __pycache__/
 bankroll_state.json
+forwarder.log
