@@ -231,7 +231,7 @@ function flatHeatmap(grid) {
 function loadTab(name, fn) {
   var el = document.getElementById('tab-' + name);
   el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  fn().then(function(data) {
+  Promise.resolve(fn()).then(function(data) {
     el.innerHTML = data;
   }).catch(function(e) {
     el.innerHTML = '<div class="error-msg">' + e.message + '</div>';
