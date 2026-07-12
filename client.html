@@ -8,8 +8,14 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0f0f0f; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; min-height: 100vh; }
   .container { max-width: 800px; margin: 0 auto; padding: 20px 16px; }
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 8px; }
   .header h1 { font-size: 20px; color: #fff; }
+  .header .tz-wrap { display: flex; align-items: center; gap: 6px; }
+  .header .tz-wrap select {
+    background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 6px;
+    padding: 4px 8px; font-size: 11px; font-family: inherit; outline: none; cursor: pointer;
+  }
+  .header .tz-wrap select:hover { border-color: #4caf50; }
   .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
   .stat-card { background: #1a1a1a; border-radius: 10px; padding: 14px; text-align: center; }
   .stat-card .num { font-size: 22px; font-weight: 700; color: #fff; }
@@ -38,6 +44,7 @@
   .min-good { background: #1b3a1b; color: #81c784; }
   .min-bad { background: #3a1b1b; color: #e57373; }
   .min-ok { background: #3a351b; color: #ffd54f; }
+  .tz-note { font-size: 10px; color: #555; margin-bottom: 8px; }
   .report { background: #0a0a0a; border-radius: 8px; padding: 14px; font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.5; white-space: pre; overflow-x: auto; color: #c8d6e5; }
   @media (max-width: 500px) {
     .stats-row { grid-template-columns: 1fr 1fr; }
@@ -50,6 +57,9 @@
 
 <div class="header">
   <h1>Signals Analysis</h1>
+  <div class="tz-wrap">
+    <select id="tz-select"></select>
+  </div>
 </div>
 
 <div id="dash-error" class="error-msg" style="display:none"></div>
@@ -80,6 +90,20 @@
 <script>
 var BASE = '';
 var API_KEY = 'default-key-0000-0000-000000000000';
+var DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+var DATA_TZ = 4;
+
+var TZ_LIST = [
+  [-12,'UTC-12'],[-11,'UTC-11'],[-10,'UTC-10'],[-9,'UTC-9'],[-8,'UTC-8 (LA)'],
+  [-7,'UTC-7'],[-6,'UTC-6'],[-5,'UTC-5 (NY)'],[-4,'UTC-4'],[-3,'UTC-3'],
+  [-2,'UTC-2'],[-1,'UTC-1'],[0,'UTC'],[1,'UTC+1'],[2,'UTC+2'],[3,'UTC+3'],
+  [4,'GMT+4 (Tbilisi)'],[5,'UTC+5'],[5.5,'UTC+5:30 (India)'],[6,'UTC+6'],
+  [7,'UTC+7'],[8,'UTC+8 (Singapore)'],[9,'UTC+9 (Tokyo)'],[10,'UTC+10'],
+  [11,'UTC+11'],[12,'UTC+12 (Auckland)'],[13,'UTC+13'],[14,'UTC+14'],
+];
+
+var userTz = DATA_TZ;
+var STORED = {};
 
 function switchTab(name) {
   var allTabs = ['today','top','avoid','minutes','report'];
@@ -93,12 +117,8 @@ function switchTab(name) {
 }
 
 function api(path) {
-  var url = path;
-  if (path.indexOf('?') === -1) {
-    url = path + '?api_key=' + encodeURIComponent(API_KEY);
-  } else {
-    url = path + '&api_key=' + encodeURIComponent(API_KEY);
-  }
+  var url = path.indexOf('?') === -1 ? path + '?api_key=' : path + '&api_key=';
+  url += encodeURIComponent(API_KEY);
   return fetch(BASE + url).then(function(r) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
@@ -113,22 +133,63 @@ function fillTab(name, html) {
 }
 
 function wrClass(wr) {
-  if (wr >= 90) return 'wr-high';
-  if (wr >= 85) return 'wr-mid';
-  return 'wr-low';
+  return wr >= 90 ? 'wr-high' : wr >= 85 ? 'wr-mid' : 'wr-low';
 }
 
-function slotsTable(slots, showDay) {
+function shiftSlot(day, hour, toOffset) {
+  var diff = toOffset - DATA_TZ;
+  var idx = DAYS.indexOf(day);
+  var total = idx * 24 + hour + diff;
+  var newDay = DAYS[((Math.floor(total / 24)) % 7 + 7) % 7];
+  var newHour = ((total % 24) + 24) % 24;
+  return { day: newDay, hour: Math.round(newHour) };
+}
+
+function todayInTz(offset) {
+  var d = new Date();
+  var utcDay = d.getUTCDay();
+  var utcHour = d.getUTCHours();
+  var total = utcDay * 24 + utcHour + offset;
+  var localDay = ((Math.floor(total / 24)) % 7 + 7) % 7;
+  return DAYS[(localDay + 6) % 7];
+}
+
+function flatHeatmap(grid) {
+  var out = [];
+  for (var di = 0; di < DAYS.length; di++) {
+    var day = DAYS[di];
+    var slots = grid[day] || {};
+    for (var hourStr in slots) {
+      var info = slots[hourStr];
+      out.push({
+        day: day, hour: parseInt(hourStr),
+        win_rate: info.wr, total: info.n,
+        wins: info.wins, losses: info.losses,
+        ci_low: info.ci_low, ci_high: info.ci_high
+      });
+    }
+  }
+  return out;
+}
+
+function slotsTable(slots, showDay, noShift) {
   if (!slots || slots.length === 0) return '<p style="color:#666;text-align:center;padding:20px">No data</p>';
   var h = '<table><tr><th>#</th>';
   if (showDay) h += '<th>Day</th>';
   h += '<th>Hour</th><th>W%</th><th>95% CI</th><th>W/L</th><th>n</th></tr>';
   for (var i = 0; i < slots.length; i++) {
     var s = slots[i];
+    var dayDisplay = s.day;
+    var hourDisplay = s.hour;
+    if (!noShift) {
+      var shifted = shiftSlot(s.day, s.hour, userTz);
+      dayDisplay = shifted.day;
+      hourDisplay = shifted.hour;
+    }
     h += '<tr>' +
       '<td class="slot-num">' + (i + 1) + '</td>' +
-      (showDay ? '<td class="slot-day">' + s.day + '</td>' : '') +
-      '<td class="slot-hour">' + ('0' + s.hour).slice(-2) + ':00</td>' +
+      (showDay ? '<td class="slot-day">' + dayDisplay + '</td>' : '') +
+      '<td class="slot-hour">' + ('0' + hourDisplay).slice(-2) + ':00</td>' +
       '<td class="slot-wr ' + wrClass(s.win_rate) + '">' + s.win_rate.toFixed(1) + '%</td>' +
       '<td class="slot-ci">[' + s.ci_low.toFixed(1) + '-' + s.ci_high.toFixed(1) + ']</td>' +
       '<td style="color:#888">' + s.wins + 'W/' + s.losses + 'L</td>' +
@@ -144,9 +205,10 @@ function minsTable(data) {
   h += '<table><tr><th>Hour</th><th>Best Block</th><th>Best W%</th><th>n</th><th>Worst Block</th><th>Worst W%</th><th>n</th></tr>';
   for (var i = 0; i < data.blocks.length; i++) {
     var b = data.blocks[i];
+    var localH = ((b.hour + (userTz - DATA_TZ)) % 24 + 24) % 24;
     var cls = b.best_wr >= 90 ? 'min-good' : (b.best_wr >= 82 ? 'min-ok' : 'min-bad');
     h += '<tr>' +
-      '<td class="slot-hour">' + ('0' + b.hour).slice(-2) + ':00</td>' +
+      '<td class="slot-hour">' + ('0' + Math.round(localH)).slice(-2) + ':00</td>' +
       '<td><span class="min-block ' + cls + '">' + b.best_block + '</span></td>' +
       '<td class="slot-wr ' + wrClass(b.best_wr) + '">' + b.best_wr.toFixed(1) + '%</td>' +
       '<td class="slot-num">' + b.best_n + '</td>' +
@@ -158,8 +220,61 @@ function minsTable(data) {
   return h + '</table>';
 }
 
+function renderAll() {
+  var h = STORED.heatmap;
+  var top = STORED.top;
+  var avoid = STORED.avoid;
+  var minutes = STORED.minutes;
+  var today = STORED.today;
+
+  var todayName = todayInTz(userTz);
+  var allHeat = flatHeatmap(h.grid);
+  var todaySlots = [];
+  for (var i = 0; i < allHeat.length; i++) {
+    var shifted = shiftSlot(allHeat[i].day, allHeat[i].hour, userTz);
+    if (shifted.day === todayName) {
+      todaySlots.push({
+        day: shifted.day, hour: shifted.hour,
+        win_rate: allHeat[i].win_rate, total: allHeat[i].total,
+        wins: allHeat[i].wins, losses: allHeat[i].losses,
+        ci_low: allHeat[i].ci_low, ci_high: allHeat[i].ci_high
+      });
+    }
+  }
+  todaySlots.sort(function(a, b) { return b.win_rate - a.win_rate; });
+
+  // Stats
+  var twr = 0;
+  for (var i = 0; i < todaySlots.length; i++) twr += todaySlots[i].win_rate;
+  if (todaySlots.length > 0) twr = twr / todaySlots.length;
+
+  var awr = 0;
+  for (var i = 0; i < top.slots.length; i++) awr += top.slots[i].win_rate;
+  if (top.slots.length > 0) awr = awr / top.slots.length;
+
+  document.getElementById('stat-total').textContent = STORED.dash.total_slots;
+  document.getElementById('stat-avg-wr').textContent = awr.toFixed(1) + '%';
+  document.getElementById('stat-today-wr').textContent = twr.toFixed(1) + '%';
+  document.getElementById('stat-today-vol').textContent = todaySlots.length;
+
+  // Today tab (already shifted, pass noShift=true)
+  fillTab('today', '<div style="margin-bottom:8px;font-size:12px;color:#666">' + todayName + ' — sorted by win rate</div>' +
+    '<div class="tz-note">Times in ' + document.getElementById('tz-select').options[document.getElementById('tz-select').selectedIndex].textContent + '</div>' +
+    slotsTable(todaySlots, false, true));
+
+  // Top 20
+  fillTab('top', '<div style="margin-bottom:8px;font-size:12px;color:#666">' + top.total + ' qualified slots (min 30 samples)</div>' +
+    '<div class="tz-note">Times in ' + document.getElementById('tz-select').options[document.getElementById('tz-select').selectedIndex].textContent + '</div>' +
+    slotsTable(top.slots, true));
+
+  // Avoid
+  fillTab('avoid', slotsTable(avoid.slots, true));
+
+  // Minutes
+  fillTab('minutes', minsTable(minutes));
+}
+
 function loadAll() {
-  // Fetch all data in parallel
   Promise.all([
     api('/api/v1/dashboard'),
     api('/api/v1/top?n=20&min_samples=30'),
@@ -168,48 +283,16 @@ function loadAll() {
     api('/api/v1/today'),
     api('/api/v1/heatmap'),
   ]).then(function(results) {
-    var dash = results[0];
-    var top = results[1];
-    var avoid = results[2];
-    var minutes = results[3];
-    var today = results[4];
-    var heatmap = results[5];
+    STORED.dash = results[0];
+    STORED.top = results[1];
+    STORED.avoid = results[2];
+    STORED.minutes = results[3];
+    STORED.today = results[4];
+    STORED.heatmap = results[5];
 
-    // Stats row
-    var todayWr = 0;
-    if (today.slots.length > 0) {
-      for (var i = 0; i < today.slots.length; i++) {
-        todayWr += today.slots[i].win_rate;
-      }
-      todayWr = todayWr / today.slots.length;
-    }
-    var avgWr = 0;
-    if (top.slots.length > 0) {
-      for (var i = 0; i < top.slots.length; i++) {
-        avgWr += top.slots[i].win_rate;
-      }
-      avgWr = avgWr / top.slots.length;
-    }
+    renderAll();
 
-    document.getElementById('stat-total').textContent = dash.total_slots;
-    document.getElementById('stat-avg-wr').textContent = avgWr.toFixed(1) + '%';
-    document.getElementById('stat-today-wr').textContent = todayWr.toFixed(1) + '%';
-    document.getElementById('stat-today-vol').textContent = today.slots.length;
-
-    // Today tab
-    var sorted = today.slots.slice().sort(function(a, b) { return b.win_rate - a.win_rate; });
-    fillTab('today', '<div style="margin-bottom:8px;font-size:12px;color:#666">' + today.day + ' — sorted by win rate</div>' + slotsTable(sorted, false));
-
-    // Top 20 tab
-    fillTab('top', '<div style="margin-bottom:8px;font-size:12px;color:#666">' + top.total + ' qualified slots (min 30 samples)</div>' + slotsTable(top.slots, true));
-
-    // Avoid tab
-    fillTab('avoid', slotsTable(avoid.slots, true));
-
-    // Minutes tab
-    fillTab('minutes', minsTable(minutes));
-
-    // Report tab
+    // Report tab (re-fetched each time, always GMT+4)
     fetch(BASE + '/api/run?cmd=today').then(function(r) { return r.text(); }).then(function(text) {
       var el = document.createElement('div');
       el.textContent = text;
@@ -224,6 +307,30 @@ function loadAll() {
   });
 }
 
+function changeTz() {
+  var sel = document.getElementById('tz-select');
+  userTz = parseFloat(sel.value);
+  localStorage.setItem('signals_tz', sel.value);
+  if (STORED.heatmap) renderAll();
+}
+
+function populateTz() {
+  var sel = document.getElementById('tz-select');
+  var saved = localStorage.getItem('signals_tz');
+  for (var i = 0; i < TZ_LIST.length; i++) {
+    var opt = document.createElement('option');
+    opt.value = TZ_LIST[i][0];
+    opt.textContent = TZ_LIST[i][1];
+    if (saved ? parseFloat(saved) === TZ_LIST[i][0] : TZ_LIST[i][0] === DATA_TZ) {
+      opt.selected = true;
+      userTz = TZ_LIST[i][0];
+    }
+    sel.appendChild(opt);
+  }
+  sel.onchange = changeTz;
+}
+
+populateTz();
 loadAll();
 </script>
 </body>
