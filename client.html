@@ -166,7 +166,10 @@ function todayDayName(offset) {
 
 function tzLabel() {
   var sel = document.getElementById('tz-select');
-  return sel.options[sel.selectedIndex].textContent;
+  if (sel && sel.selectedIndex >= 0) {
+    return sel.options[sel.selectedIndex].textContent;
+  }
+  return 'GMT+4 (Tbilisi)';
 }
 
 function renderSlots(slots, showDay, noShift) {
@@ -241,11 +244,19 @@ function loadTab(name, fn) {
 function switchTab(name) {
   var tabs = document.querySelectorAll('.tab');
   for (var i = 0; i < tabs.length; i++) {
-    tabs[i].classList.toggle('active', tabs[i].getAttribute('data-tab') === name);
+    if (tabs[i].getAttribute('data-tab') === name) {
+      tabs[i].classList.add('active');
+    } else {
+      tabs[i].classList.remove('active');
+    }
   }
   var contents = document.querySelectorAll('.tab-content');
   for (var i = 0; i < contents.length; i++) {
-    contents[i].classList.toggle('active', contents[i].id === 'tab-' + name);
+    if (contents[i].id === 'tab-' + name) {
+      contents[i].classList.add('active');
+    } else {
+      contents[i].classList.remove('active');
+    }
   }
 }
 
