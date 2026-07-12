@@ -8,14 +8,8 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0f0f0f; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; min-height: 100vh; }
   .container { max-width: 800px; margin: 0 auto; padding: 20px 16px; }
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 8px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
   .header h1 { font-size: 20px; color: #fff; }
-  .header .tz-info { display: flex; align-items: center; gap: 8px; }
-  .header .tz-info select {
-    background: #1a1a1a; color: #ccc; border: 1px solid #333; border-radius: 6px;
-    padding: 4px 8px; font-size: 11px; font-family: inherit; outline: none; cursor: pointer;
-  }
-  .header .tz-info select:hover { border-color: #4caf50; }
   .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
   .stat-card { background: #1a1a1a; border-radius: 10px; padding: 14px; text-align: center; }
   .stat-card .num { font-size: 22px; font-weight: 700; color: #fff; }
@@ -44,7 +38,6 @@
   .min-good { background: #1b3a1b; color: #81c784; }
   .min-bad { background: #3a1b1b; color: #e57373; }
   .min-ok { background: #3a351b; color: #ffd54f; }
-  .tz-note { font-size: 10px; color: #555; margin-bottom: 8px; }
   .report { background: #0a0a0a; border-radius: 8px; padding: 14px; font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.5; white-space: pre; overflow-x: auto; color: #c8d6e5; }
   @media (max-width: 500px) {
     .stats-row { grid-template-columns: 1fr 1fr; }
@@ -56,15 +49,12 @@
 <div class="container">
 
 <div class="header">
-  <h1>📊 Signal Analysis</h1>
-  <div class="tz-info">
-    <select id="tz-select"></select>
-  </div>
+  <h1>Signals Analysis</h1>
 </div>
 
-<div id="dash-error" class="error-msg"></div>
+<div id="dash-error" class="error-msg" style="display:none"></div>
 
-<div class="stats-row">
+<div class="stats-row" id="stats-row">
   <div class="stat-card"><div class="num" id="stat-total">—</div><div class="lbl">Qualified Slots</div></div>
   <div class="stat-card"><div class="num" id="stat-avg-wr">—</div><div class="lbl">Avg Win Rate</div></div>
   <div class="stat-card"><div class="num" id="stat-today-wr">—</div><div class="lbl">Today's Avg WR</div></div>
@@ -72,118 +62,73 @@
 </div>
 
 <div class="tab-bar">
-  <button class="tab active" data-tab="today" onclick="switchTab('today')">Today</button>
-  <button class="tab" data-tab="top" onclick="switchTab('top')">Top 20</button>
-  <button class="tab" data-tab="avoid" onclick="switchTab('avoid')">Avoid</button>
-  <button class="tab" data-tab="minutes" onclick="switchTab('minutes')">Minutes</button>
-  <button class="tab" data-tab="report" onclick="switchTab('report')">Today Report</button>
+  <button class="tab active" id="tab-btn-today" onclick="switchTab('today')">Today</button>
+  <button class="tab" id="tab-btn-top" onclick="switchTab('top')">Top 20</button>
+  <button class="tab" id="tab-btn-avoid" onclick="switchTab('avoid')">Avoid</button>
+  <button class="tab" id="tab-btn-minutes" onclick="switchTab('minutes')">Minutes</button>
+  <button class="tab" id="tab-btn-report" onclick="switchTab('report')">Report</button>
 </div>
 
-<div id="tab-today" class="tab-content active"><div class="loading"><div class="spinner"></div></div></div>
-<div id="tab-top" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
-<div id="tab-avoid" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
-<div id="tab-minutes" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
-<div id="tab-report" class="tab-content"><div class="loading"><div class="spinner"></div></div></div>
+<div id="tab-today" class="tab-content active"><div class="loading"><div class="spinner"></div><br><span>Loading...</span></div></div>
+<div id="tab-top" class="tab-content"><div class="loading"><div class="spinner"></div><br><span>Loading...</span></div></div>
+<div id="tab-avoid" class="tab-content"><div class="loading"><div class="spinner"></div><br><span>Loading...</span></div></div>
+<div id="tab-minutes" class="tab-content"><div class="loading"><div class="spinner"></div><br><span>Loading...</span></div></div>
+<div id="tab-report" class="tab-content"><div class="loading"><div class="spinner"></div><br><span>Loading...</span></div></div>
 
 </div>
 
 <script>
-(function() {
 var BASE = '';
 var API_KEY = 'default-key-0000-0000-000000000000';
-var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-var DATA_TZ = 4;
 
-var TZ_LIST = [
-  [-12, 'UTC-12 (Baker Island)'],
-  [-11, 'UTC-11 (American Samoa)'],
-  [-10, 'UTC-10 (Honolulu)'],
-  [-9,  'UTC-9 (Anchorage)'],
-  [-8,  'UTC-8 (Los Angeles)'],
-  [-7,  'UTC-7 (Denver)'],
-  [-6,  'UTC-6 (Chicago)'],
-  [-5,  'UTC-5 (New York)'],
-  [-4,  'UTC-4 (Santiago)'],
-  [-3,  'UTC-3 (Buenos Aires)'],
-  [-2,  'UTC-2 (Fernando)'],
-  [-1,  'UTC-1 (Azores)'],
-  [0,   'UTC (London)'],
-  [1,   'UTC+1 (Paris)'],
-  [2,   'UTC+2 (Cairo)'],
-  [3,   'UTC+3 (Moscow)'],
-  [4,   'UTC+4 (Tbilisi)'],
-  [5,   'UTC+5 (Karachi)'],
-  [5.5, 'UTC+5:30 (India)'],
-  [6,   'UTC+6 (Dhaka)'],
-  [7,   'UTC+7 (Bangkok)'],
-  [8,   'UTC+8 (Singapore)'],
-  [9,   'UTC+9 (Tokyo)'],
-  [10,  'UTC+10 (Sydney)'],
-  [11,  'UTC+11 (Honiara)'],
-  [12,  'UTC+12 (Auckland)'],
-  [13,  'UTC+13 (Apia)'],
-  [14,  'UTC+14 (Kiritimati)'],
-];
+function switchTab(name) {
+  var allTabs = ['today','top','avoid','minutes','report'];
+  for (var i = 0; i < allTabs.length; i++) {
+    var t = allTabs[i];
+    document.getElementById('tab-btn-' + t).classList.remove('active');
+    document.getElementById('tab-' + t).classList.remove('active');
+  }
+  document.getElementById('tab-btn-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
 
-var userTz = DATA_TZ;
+function api(path) {
+  var url = path;
+  if (path.indexOf('?') === -1) {
+    url = path + '?api_key=' + encodeURIComponent(API_KEY);
+  } else {
+    url = path + '&api_key=' + encodeURIComponent(API_KEY);
+  }
+  return fetch(BASE + url).then(function(r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function(data) {
+    if (data.error) throw new Error(data.error);
+    return data;
+  });
+}
 
-function escapeHtml(s) {
-  var d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
+function fillTab(name, html) {
+  document.getElementById('tab-' + name).innerHTML = html;
 }
 
 function wrClass(wr) {
-  return wr >= 90 ? 'wr-high' : wr >= 85 ? 'wr-mid' : 'wr-low';
+  if (wr >= 90) return 'wr-high';
+  if (wr >= 85) return 'wr-mid';
+  return 'wr-low';
 }
 
-function minClass(wr) {
-  return wr >= 90 ? 'min-good' : wr >= 82 ? 'min-ok' : 'min-bad';
-}
-
-function localSlot(slot, toOffset) {
-  var diff = toOffset - DATA_TZ;
-  var dayIdx = DAYS.indexOf(slot.day);
-  var totalHours = dayIdx * 24 + slot.hour + diff;
-  var newDay = DAYS[((Math.floor(totalHours / 24)) % 7 + 7) % 7];
-  var newHour = ((totalHours % 24) + 24) % 24;
-  return {
-    day: newDay, hour: Math.round(newHour),
-    win_rate: slot.win_rate, total: slot.total,
-    wins: slot.wins, losses: slot.losses,
-    ci_low: slot.ci_low, ci_high: slot.ci_high
-  };
-}
-
-function todayDayName(offset) {
-  var d = new Date();
-  var utcDay = d.getUTCDay();
-  var utcHour = d.getUTCHours();
-  var totalHours = utcDay * 24 + utcHour + offset;
-  var localDay = ((Math.floor(totalHours / 24)) % 7 + 7) % 7;
-  return DAYS[(localDay + 6) % 7];
-}
-
-function tzLabel() {
-  var sel = document.getElementById('tz-select');
-  if (sel && sel.selectedIndex >= 0) {
-    return sel.options[sel.selectedIndex].textContent;
-  }
-  return 'GMT+4 (Tbilisi)';
-}
-
-function renderSlots(slots, showDay, noShift) {
-  if (!slots || !slots.length) return '<p style="color:#666;text-align:center;padding:20px">No data</p>';
-  var h = '<table><tr><th></th>';
+function slotsTable(slots, showDay) {
+  if (!slots || slots.length === 0) return '<p style="color:#666;text-align:center;padding:20px">No data</p>';
+  var h = '<table><tr><th>#</th>';
   if (showDay) h += '<th>Day</th>';
   h += '<th>Hour</th><th>W%</th><th>95% CI</th><th>W/L</th><th>n</th></tr>';
   for (var i = 0; i < slots.length; i++) {
     var s = slots[i];
-    var local = noShift ? s : localSlot(s, userTz);
     h += '<tr>' +
       '<td class="slot-num">' + (i + 1) + '</td>' +
-      (showDay ? '<td class="slot-day">' + local.day + '</td>' : '') +
-      '<td class="slot-hour">' + String(local.hour).padStart(2, '0') + ':00</td>' +
+      (showDay ? '<td class="slot-day">' + s.day + '</td>' : '') +
+      '<td class="slot-hour">' + ('0' + s.hour).slice(-2) + ':00</td>' +
       '<td class="slot-wr ' + wrClass(s.win_rate) + '">' + s.win_rate.toFixed(1) + '%</td>' +
       '<td class="slot-ci">[' + s.ci_low.toFixed(1) + '-' + s.ci_high.toFixed(1) + ']</td>' +
       '<td style="color:#888">' + s.wins + 'W/' + s.losses + 'L</td>' +
@@ -193,19 +138,19 @@ function renderSlots(slots, showDay, noShift) {
   return h + '</table>';
 }
 
-function renderMinutes(data) {
-  if (!data || !data.blocks || !data.blocks.length) return '<p style="color:#666;text-align:center;padding:20px">No data</p>';
+function minsTable(data) {
+  if (!data || !data.blocks || data.blocks.length === 0) return '<p style="color:#666;text-align:center;padding:20px">No data</p>';
   var h = '<p style="font-size:12px;color:#666;margin-bottom:8px">' + data.total_paired.toLocaleString() + ' signals paired</p>';
   h += '<table><tr><th>Hour</th><th>Best Block</th><th>Best W%</th><th>n</th><th>Worst Block</th><th>Worst W%</th><th>n</th></tr>';
   for (var i = 0; i < data.blocks.length; i++) {
     var b = data.blocks[i];
-    var localH = ((b.hour + (userTz - DATA_TZ)) % 24 + 24) % 24;
+    var cls = b.best_wr >= 90 ? 'min-good' : (b.best_wr >= 82 ? 'min-ok' : 'min-bad');
     h += '<tr>' +
-      '<td class="slot-hour">' + String(Math.round(localH)).padStart(2, '0') + ':00</td>' +
-      '<td><span class="min-block ' + minClass(b.best_wr) + '">' + b.best_block + '</span></td>' +
+      '<td class="slot-hour">' + ('0' + b.hour).slice(-2) + ':00</td>' +
+      '<td><span class="min-block ' + cls + '">' + b.best_block + '</span></td>' +
       '<td class="slot-wr ' + wrClass(b.best_wr) + '">' + b.best_wr.toFixed(1) + '%</td>' +
       '<td class="slot-num">' + b.best_n + '</td>' +
-      '<td><span class="min-block ' + minClass(b.worst_wr) + '">' + b.worst_block + '</span></td>' +
+      '<td><span class="min-block ' + (b.worst_wr >= 90 ? 'min-good' : (b.worst_wr >= 82 ? 'min-ok' : 'min-bad')) + '">' + b.worst_block + '</span></td>' +
       '<td class="slot-wr ' + wrClass(b.worst_wr) + '">' + b.worst_wr.toFixed(1) + '%</td>' +
       '<td class="slot-num">' + b.worst_n + '</td>' +
       '</tr>';
@@ -213,160 +158,73 @@ function renderMinutes(data) {
   return h + '</table>';
 }
 
-function flatHeatmap(grid) {
-  var out = [];
-  for (var di = 0; di < DAYS.length; di++) {
-    var day = DAYS[di];
-    var slots = grid[day] || {};
-    for (var hourStr in slots) {
-      var info = slots[hourStr];
-      out.push({
-        day: day, hour: parseInt(hourStr),
-        win_rate: info.wr, total: info.n,
-        wins: info.wins, losses: info.losses,
-        ci_low: info.ci_low, ci_high: info.ci_high
-      });
-    }
-  }
-  return out;
-}
-
-function loadTab(name, fn) {
-  var el = document.getElementById('tab-' + name);
-  el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  Promise.resolve(fn()).then(function(data) {
-    el.innerHTML = data;
-  }).catch(function(e) {
-    el.innerHTML = '<div class="error-msg">' + e.message + '</div>';
-  });
-}
-
-function switchTab(name) {
-  var tabs = document.querySelectorAll('.tab');
-  for (var i = 0; i < tabs.length; i++) {
-    if (tabs[i].getAttribute('data-tab') === name) {
-      tabs[i].classList.add('active');
-    } else {
-      tabs[i].classList.remove('active');
-    }
-  }
-  var contents = document.querySelectorAll('.tab-content');
-  for (var i = 0; i < contents.length; i++) {
-    if (contents[i].id === 'tab-' + name) {
-      contents[i].classList.add('active');
-    } else {
-      contents[i].classList.remove('active');
-    }
-  }
-}
-
-function changeTz() {
-  var sel = document.getElementById('tz-select');
-  userTz = parseFloat(sel.value);
-  localStorage.setItem('signals_tz', sel.value);
-  loadAll();
-}
-
-function populateTz() {
-  var sel = document.getElementById('tz-select');
-  var saved = localStorage.getItem('signals_tz');
-  for (var i = 0; i < TZ_LIST.length; i++) {
-    var tz = TZ_LIST[i];
-    var opt = document.createElement('option');
-    opt.value = tz[0];
-    opt.textContent = tz[1];
-    if (saved ? tz[0] === parseFloat(saved) : tz[0] === DATA_TZ) {
-      opt.selected = true;
-      userTz = tz[0];
-    }
-    sel.appendChild(opt);
-  }
-  sel.onchange = changeTz;
-}
-
-function api(path) {
-  var sep = path.indexOf('?') !== -1 ? '&' : '?';
-  return fetch(BASE + path + sep + 'api_key=' + encodeURIComponent(API_KEY))
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.error) throw new Error(data.error);
-      return data;
-    });
-}
-
 function loadAll() {
-  var errEl = document.getElementById('dash-error');
-  errEl.style.display = 'none';
-
+  // Fetch all data in parallel
   Promise.all([
     api('/api/v1/dashboard'),
-    api('/api/v1/heatmap'),
     api('/api/v1/top?n=20&min_samples=30'),
+    api('/api/v1/avoid'),
     api('/api/v1/minutes'),
+    api('/api/v1/today'),
+    api('/api/v1/heatmap'),
   ]).then(function(results) {
-    var dashData = results[0];
-    var heatData = results[1];
-    var topData = results[2];
-    var minData = results[3];
+    var dash = results[0];
+    var top = results[1];
+    var avoid = results[2];
+    var minutes = results[3];
+    var today = results[4];
+    var heatmap = results[5];
 
-    var todayName = todayDayName(userTz);
-    var allHeat = flatHeatmap(heatData.grid);
-    var shiftedAll = allHeat.map(function(s) { return localSlot(s, userTz); });
-    var todaySlots = shiftedAll.filter(function(s) { return s.day === todayName; });
-    var todayWr = todaySlots.length
-      ? (todaySlots.reduce(function(s, x) { return s + x.win_rate; }, 0) / todaySlots.length)
-      : 0;
-    var avgWr = topData.slots.reduce(function(s, x) { return s + x.win_rate; }, 0) / topData.slots.length;
+    // Stats row
+    var todayWr = 0;
+    if (today.slots.length > 0) {
+      for (var i = 0; i < today.slots.length; i++) {
+        todayWr += today.slots[i].win_rate;
+      }
+      todayWr = todayWr / today.slots.length;
+    }
+    var avgWr = 0;
+    if (top.slots.length > 0) {
+      for (var i = 0; i < top.slots.length; i++) {
+        avgWr += top.slots[i].win_rate;
+      }
+      avgWr = avgWr / top.slots.length;
+    }
 
-    document.getElementById('stat-total').textContent = dashData.total_slots;
+    document.getElementById('stat-total').textContent = dash.total_slots;
     document.getElementById('stat-avg-wr').textContent = avgWr.toFixed(1) + '%';
     document.getElementById('stat-today-wr').textContent = todayWr.toFixed(1) + '%';
-    document.getElementById('stat-today-vol').textContent = todaySlots.length;
+    document.getElementById('stat-today-vol').textContent = today.slots.length;
 
     // Today tab
-    loadTab('today', function() {
-      var today = todaySlots.slice().sort(function(a, b) { return b.win_rate - a.win_rate; });
-      return '<div style="margin-bottom:8px;font-size:12px;color:#666">' + todayName + ' — sorted by win rate</div>' +
-        '<div class="tz-note">Times shown in ' + tzLabel() + '</div>' +
-        renderSlots(today, false, true);
-    });
+    var sorted = today.slots.slice().sort(function(a, b) { return b.win_rate - a.win_rate; });
+    fillTab('today', '<div style="margin-bottom:8px;font-size:12px;color:#666">' + today.day + ' — sorted by win rate</div>' + slotsTable(sorted, false));
 
-    // Top 20
-    loadTab('top', function() {
-      return '<div style="margin-bottom:8px;font-size:12px;color:#666">' + topData.total + ' qualified slots (min ' + topData.min_samples + ' samples)</div>' +
-        '<div class="tz-note">Times shown in ' + tzLabel() + '</div>' +
-        renderSlots(topData.slots, true);
-    });
+    // Top 20 tab
+    fillTab('top', '<div style="margin-bottom:8px;font-size:12px;color:#666">' + top.total + ' qualified slots (min 30 samples)</div>' + slotsTable(top.slots, true));
 
-    // Avoid
-    loadTab('avoid', function() {
-      return api('/api/v1/avoid').then(function(d) {
-        return renderSlots(d.slots, true);
-      });
-    });
+    // Avoid tab
+    fillTab('avoid', slotsTable(avoid.slots, true));
 
-    // Minutes
-    loadTab('minutes', function() {
-      return renderMinutes(minData);
-    });
+    // Minutes tab
+    fillTab('minutes', minsTable(minutes));
 
-    // Today Report
-    loadTab('report', function() {
-      return fetch(BASE + '/api/run?cmd=today').then(function(r) { return r.text(); }).then(function(text) {
-        return '<div class="report">' + escapeHtml(text) + '</div>';
-      });
+    // Report tab
+    fetch(BASE + '/api/run?cmd=today').then(function(r) { return r.text(); }).then(function(text) {
+      var el = document.createElement('div');
+      el.textContent = text;
+      fillTab('report', '<div class="report">' + el.innerHTML + '</div>');
+    }).catch(function(e) {
+      fillTab('report', '<div class="error-msg">Failed: ' + e.message + '</div>');
     });
 
   }).catch(function(e) {
-    errEl.textContent = e.message || 'Failed to load data';
-    errEl.style.display = 'block';
+    document.getElementById('dash-error').textContent = e.message || 'Failed to load data';
+    document.getElementById('dash-error').style.display = 'block';
   });
 }
 
-populateTz();
 loadAll();
-
-})();
 </script>
 </body>
 </html>
