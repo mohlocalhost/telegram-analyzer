@@ -72,11 +72,11 @@
 </div>
 
 <div class="tab-bar">
-  <button class="tab active" data-tab="today">Today</button>
-  <button class="tab" data-tab="top">Top 20</button>
-  <button class="tab" data-tab="avoid">Avoid</button>
-  <button class="tab" data-tab="minutes">Minutes</button>
-  <button class="tab" data-tab="report">Today Report</button>
+  <button class="tab active" data-tab="today" onclick="switchTab('today')">Today</button>
+  <button class="tab" data-tab="top" onclick="switchTab('top')">Top 20</button>
+  <button class="tab" data-tab="avoid" onclick="switchTab('avoid')">Avoid</button>
+  <button class="tab" data-tab="minutes" onclick="switchTab('minutes')">Minutes</button>
+  <button class="tab" data-tab="report" onclick="switchTab('report')">Today Report</button>
 </div>
 
 <div id="tab-today" class="tab-content active"><div class="loading"><div class="spinner"></div></div></div>
