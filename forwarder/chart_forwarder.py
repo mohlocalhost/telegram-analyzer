@@ -52,6 +52,8 @@ def parse_signal(text):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     pair = None
     direction = None
+    entry_hour = None
+    entry_min = None
     for line in lines:
         if "📊" in line:
             pair = line.replace("📊", "").strip()
@@ -59,9 +61,14 @@ def parse_signal(text):
             direction = "CALL"
         elif "PUT" in line and "DOWN" in line:
             direction = "PUT"
+        elif line.startswith("⏰"):
+            parts = line.replace("⏰", "").strip().split(":")
+            if len(parts) == 2:
+                entry_hour = int(parts[0])
+                entry_min = int(parts[1])
     if not pair or not direction:
         return None
-    return {"pair": pair, "direction": direction}
+    return {"pair": pair, "direction": direction, "entry_hour": entry_hour, "entry_min": entry_min}
 
 
 def build_result_text(pair, verification):
@@ -70,6 +77,13 @@ def build_result_text(pair, verification):
             return f"\U0001f5d3 {pair} Profit \u2705"
         return f"\U0001f5d3 {pair} PROFIT 1 \u26a1"
     return f"\U0001f5d3 {pair} LOSS \u274c"
+
+
+def entry_time_to_utc(msg_date, entry_hour, entry_min):
+    msg_date = msg_date.replace(tzinfo=timezone.utc) if msg_date.tzinfo is None else msg_date
+    entry = msg_date.replace(hour=entry_hour, minute=entry_min, second=0, microsecond=0)
+    entry = entry.astimezone(timezone.utc)
+    return entry
 
 
 async def verify_signal(signal, signal_time_utc):
@@ -214,11 +228,21 @@ async def main():
         seen.add(msg.id)
         log.info(f"Signal #{msg.id}: {signal['pair']} {signal['direction']}")
 
-        signal_time = msg.date.replace(tzinfo=timezone.utc) if msg.date.tzinfo is None else msg.date
+        if signal["entry_hour"] is not None and signal["entry_min"] is not None:
+            entry_time = entry_time_to_utc(msg.date, signal["entry_hour"], signal["entry_min"])
+            log.info(f"  ⏰ {signal['entry_hour']:02d}:{signal['entry_min']:02d} UTC-2 → entry at {entry_time.strftime('%H:%M:%S')} UTC")
+        else:
+            entry_time = msg.date.replace(tzinfo=timezone.utc) if msg.date.tzinfo is None else msg.date
+            log.info(f"  No ⏰ field, using message time: {entry_time.strftime('%H:%M:%S')} UTC")
 
-        await asyncio.sleep(150)
+        now = datetime.now(timezone.utc)
+        wait = (entry_time - now).total_seconds() + 180
+        if wait < 60:
+            wait = 60
+        log.info(f"  Waiting {wait:.0f}s for candles to close...")
+        await asyncio.sleep(wait)
 
-        verification = await verify_signal(signal, signal_time)
+        verification = await verify_signal(signal, entry_time)
 
         if verification:
             result_text = build_result_text(signal["pair"], verification)
