@@ -1,2 +1,4 @@
 telethon==1.43.2
 python-dotenv>=1.0
+yfinance>=1.5
+requests>=2.31
