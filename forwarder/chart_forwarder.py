@@ -1,17 +1,17 @@
 import asyncio
+import json
 import logging
 import os
 import sys
 import threading
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
-
-import pandas as pd
-import yfinance as yf
 
 load_dotenv()
 
@@ -20,6 +20,7 @@ API_HASH = os.environ["API_HASH"]
 SESSION_NAME = os.environ.get("SESSION_NAME", "chart_forwarder_session")
 FOREX_SOURCE = os.environ.get("FOREX_SOURCE", "-1002770121139")
 FOREX_DEST = os.environ.get("FOREX_DEST", "-1003877136886")
+TWELVE_DATA_KEY = os.environ.get("TWELVE_DATA_KEY", "")
 HEALTH_PORT = int(os.environ.get("PORT", os.environ.get("HEALTH_PORT", "8080")))
 
 PAIR_CORRECTIONS = {"USDCallAD": "USDCAD", "GBPCallAD": "GBPUSD"}
@@ -41,10 +42,10 @@ SOURCE_ID = parse_channel(FOREX_SOURCE)
 DEST_ID = parse_channel(FOREX_DEST)
 
 
-def pair_to_symbol(pair):
+def pair_to_twelve(pair):
     pair = PAIR_CORRECTIONS.get(pair, pair).upper().strip()
     if len(pair) == 6 and pair.isalpha():
-        return f"{pair}=X"
+        return f"{pair[:3]}/{pair[3:]}"
     return None
 
 
@@ -88,80 +89,102 @@ def entry_time_to_utc(msg_date, entry_hour, entry_min):
     return entry_utc_minus_2.astimezone(timezone.utc)
 
 
-async def verify_signal(signal, signal_time_utc):
+def fetch_forex_candles(symbol, count=5):
+    url = (
+        f"https://api.twelvedata.com/time_series"
+        f"?symbol={symbol}"
+        f"&interval=1min"
+        f"&outputsize={count}"
+        f"&timezone=UTC"
+        f"&apikey={TWELVE_DATA_KEY}"
+    )
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, json.JSONDecodeError) as e:
+        log.warning(f"Twelve Data request failed: {e}")
+        return None
+
+    if data.get("status") != "ok":
+        log.warning(f"Twelve Data error: {data.get('error', 'unknown')}")
+        return None
+
+    values = data.get("values", [])
+    if not values:
+        log.warning(f"Twelve Data returned no values for {symbol}")
+        return None
+
+    candles = []
+    for v in reversed(values):
+        try:
+            dt = datetime.strptime(v["datetime"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            o = float(v["open"])
+            c = float(v["close"])
+            candles.append({"time": dt, "open": o, "close": c})
+        except (KeyError, ValueError, TypeError) as e:
+            log.warning(f"Bad candle data: {v} - {e}")
+            continue
+
+    return candles
+
+
+def is_green(candle):
+    return candle["close"] > candle["open"]
+
+def is_red(candle):
+    return candle["close"] < candle["open"]
+
+
+async def verify_signal(signal, entry_time_utc):
     pair = signal["pair"]
     direction = signal["direction"]
-    symbol = pair_to_symbol(pair)
+    symbol = pair_to_twelve(pair)
     if not symbol:
         log.error(f"Cannot resolve symbol: {pair}")
         return None
 
-    candle_start = signal_time_utc.replace(second=0, microsecond=0)
-    start = candle_start - timedelta(minutes=2)
-    end = candle_start + timedelta(minutes=4)
-
     for attempt in range(3):
-        try:
-            df = yf.download(symbol, start=start, end=end, interval="1m", progress=False)
-        except Exception as e:
-            log.warning(f"yfinance attempt {attempt+1} failed: {e}")
-            df = pd.DataFrame()
-        if not df.empty:
+        candles = fetch_forex_candles(symbol, count=5)
+        if candles:
             break
         if attempt < 2:
-            log.info(f"  No data yet, retrying in 30s...")
+            log.info(f"  Retrying in 30s...")
             await asyncio.sleep(30)
 
-    if df.empty:
-        log.warning(f"No data after retries for {symbol}")
+    if not candles:
+        log.warning(f"No data for {symbol} after retries")
         return None
 
-    tz = df.index.tz
-    target = pd.Timestamp(candle_start).tz_convert(tz) if tz else pd.Timestamp(candle_start)
+    candle_entry = None
+    candle_martingale = None
+    for c in candles:
+        if c["time"] == entry_time_utc.replace(second=0, microsecond=0):
+            candle_entry = c
+        if c["time"] == entry_time_utc.replace(second=0, microsecond=0) + timedelta(minutes=1):
+            candle_martingale = c
 
-    entry_idx = None
-    for i, ts in enumerate(df.index):
-        if ts >= target:
-            entry_idx = i
-            break
-
-    if entry_idx is None or entry_idx < 1:
-        log.warning(f"No entry candle or no candle before entry for {symbol}")
+    if not candle_entry:
+        log.warning(f"No candle at entry time {entry_time_utc} for {symbol}")
+        log.info(f"  Available: {[c['time'].strftime('%H:%M') for c in candles]}")
         return None
 
-    try:
-        entry_price = float(df.iloc[entry_idx - 1][("Close", symbol)])
-        c1_price = float(df.iloc[entry_idx][("Close", symbol)])
-    except (KeyError, TypeError, IndexError):
-        log.warning(f"Failed to read price data for {symbol}")
-        return None
+    green = is_green(candle_entry)
+    red = is_red(candle_entry)
 
-    c1_won = (c1_price > entry_price) if direction == "CALL" else (c1_price < entry_price)
+    c1_won = green if direction == "CALL" else red
 
     if c1_won:
         return {"result": "WIN", "level": 0, "label": "PROFIT"}
 
-    if entry_idx + 1 < len(df):
-        try:
-            c2_price = float(df.iloc[entry_idx + 1][("Close", symbol)])
-        except (KeyError, TypeError, IndexError):
-            return {"result": "LOSS", "level": None, "label": "LOSS"}
-        c2_won = (c2_price > c1_price) if direction == "CALL" else (c2_price < c1_price)
+    if candle_martingale:
+        mgreen = is_green(candle_martingale)
+        mred = is_red(candle_martingale)
+        c2_won = mgreen if direction == "CALL" else mred
         if c2_won:
             return {"result": "WIN", "level": 1, "label": "PROFIT 1"}
 
     return {"result": "LOSS", "level": None, "label": "LOSS"}
-
-
-def get_field_from_row(row, field, symbol):
-    try:
-        return float(row[(field, symbol)])
-    except (KeyError, TypeError):
-        pass
-    try:
-        return float(row[field])
-    except (KeyError, TypeError):
-        return None
 
 
 def make_client():
@@ -237,10 +260,10 @@ async def main():
 
         if signal["entry_hour"] is not None and signal["entry_min"] is not None:
             entry_time = entry_time_to_utc(msg.date, signal["entry_hour"], signal["entry_min"])
-            log.info(f"  ⏰ {signal['entry_hour']:02d}:{signal['entry_min']:02d} UTC-2 → entry at {entry_time.strftime('%H:%M:%S')} UTC")
+            log.info(f"  \u23f0 {signal['entry_hour']:02d}:{signal['entry_min']:02d} UTC-2 \u2192 entry at {entry_time.strftime('%H:%M:%S')} UTC")
         else:
             entry_time = msg.date.replace(tzinfo=timezone.utc) if msg.date.tzinfo is None else msg.date
-            log.info(f"  No ⏰ field, using message time: {entry_time.strftime('%H:%M:%S')} UTC")
+            log.info(f"  No \u23f0 field, using message time: {entry_time.strftime('%H:%M:%S')} UTC")
 
         now = datetime.now(timezone.utc)
         wait = (entry_time - now).total_seconds() + 180
