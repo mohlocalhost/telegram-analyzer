@@ -79,11 +79,13 @@ def build_result_text(pair, verification):
     return f"\U0001f5d3 {pair} LOSS \u274c"
 
 
+UTC_MINUS_2 = timezone(timedelta(hours=-2))
+
 def entry_time_to_utc(msg_date, entry_hour, entry_min):
     msg_date = msg_date.replace(tzinfo=timezone.utc) if msg_date.tzinfo is None else msg_date
-    entry = msg_date.replace(hour=entry_hour, minute=entry_min, second=0, microsecond=0)
-    entry = entry.astimezone(timezone.utc)
-    return entry
+    msg_utc_minus_2 = msg_date.astimezone(UTC_MINUS_2)
+    entry_utc_minus_2 = msg_utc_minus_2.replace(hour=entry_hour, minute=entry_min, second=0, microsecond=0)
+    return entry_utc_minus_2.astimezone(timezone.utc)
 
 
 async def verify_signal(signal, signal_time_utc):
