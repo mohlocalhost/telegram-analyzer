@@ -129,11 +129,13 @@ def fetch_forex_candles(symbol, count=5):
     return candles
 
 
-def is_green(candle):
-    return candle["close"] > candle["open"]
-
-def is_red(candle):
-    return candle["close"] < candle["open"]
+def find_closest(candles, target_time):
+    best = None
+    for c in candles:
+        delta = abs((c["time"] - target_time).total_seconds())
+        if best is None or delta < best[1]:
+            best = (c, delta)
+    return best[0] if best and best[1] < 90 else None
 
 
 async def verify_signal(signal, entry_time_utc):
@@ -145,7 +147,7 @@ async def verify_signal(signal, entry_time_utc):
         return None
 
     for attempt in range(3):
-        candles = fetch_forex_candles(symbol, count=5)
+        candles = fetch_forex_candles(symbol, count=6)
         if candles:
             break
         if attempt < 2:
@@ -156,31 +158,25 @@ async def verify_signal(signal, entry_time_utc):
         log.warning(f"No data for {symbol} after retries")
         return None
 
-    candle_entry = None
-    candle_martingale = None
-    for c in candles:
-        if c["time"] == entry_time_utc.replace(second=0, microsecond=0):
-            candle_entry = c
-        if c["time"] == entry_time_utc.replace(second=0, microsecond=0) + timedelta(minutes=1):
-            candle_martingale = c
+    entry_round = entry_time_utc.replace(second=0, microsecond=0)
 
-    if not candle_entry:
-        log.warning(f"No candle at entry time {entry_time_utc} for {symbol}")
+    c0 = find_closest(candles, entry_round - timedelta(minutes=1))
+    c1 = find_closest(candles, entry_round)
+    c2 = find_closest(candles, entry_round + timedelta(minutes=1))
+
+    if not c0 or not c1:
+        log.warning(f"Missing candles around entry time for {symbol}")
+        log.info(f"  Entry: {entry_round.strftime('%H:%M:%S')} UTC")
         log.info(f"  Available: {[c['time'].strftime('%H:%M') for c in candles]}")
         return None
 
-    green = is_green(candle_entry)
-    red = is_red(candle_entry)
-
-    c1_won = green if direction == "CALL" else red
+    c1_won = (c1["close"] > c0["close"]) if direction == "CALL" else (c1["close"] < c0["close"])
 
     if c1_won:
         return {"result": "WIN", "level": 0, "label": "PROFIT"}
 
-    if candle_martingale:
-        mgreen = is_green(candle_martingale)
-        mred = is_red(candle_martingale)
-        c2_won = mgreen if direction == "CALL" else mred
+    if c2:
+        c2_won = (c2["close"] > c1["close"]) if direction == "CALL" else (c2["close"] < c1["close"])
         if c2_won:
             return {"result": "WIN", "level": 1, "label": "PROFIT 1"}
 
