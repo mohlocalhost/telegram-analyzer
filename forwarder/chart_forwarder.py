@@ -97,7 +97,7 @@ async def verify_signal(signal, signal_time_utc):
         return None
 
     candle_start = signal_time_utc.replace(second=0, microsecond=0)
-    start = candle_start - timedelta(minutes=1)
+    start = candle_start - timedelta(minutes=2)
     end = candle_start + timedelta(minutes=4)
 
     for attempt in range(3):
@@ -118,30 +118,35 @@ async def verify_signal(signal, signal_time_utc):
 
     tz = df.index.tz
     target = pd.Timestamp(candle_start).tz_convert(tz) if tz else pd.Timestamp(candle_start)
-    relevant = df[df.index >= target]
 
-    if len(relevant) < 1:
-        log.warning(f"No candle at signal time for {symbol}")
+    entry_idx = None
+    for i, ts in enumerate(df.index):
+        if ts >= target:
+            entry_idx = i
+            break
+
+    if entry_idx is None or entry_idx < 1:
+        log.warning(f"No entry candle or no candle before entry for {symbol}")
         return None
 
-    c1 = relevant.iloc[0]
-    c1_open = get_field_from_row(c1, "Open", symbol)
-    c1_close = get_field_from_row(c1, "Close", symbol)
-    if c1_open is None or c1_close is None:
+    try:
+        entry_price = float(df.iloc[entry_idx - 1][("Close", symbol)])
+        c1_price = float(df.iloc[entry_idx][("Close", symbol)])
+    except (KeyError, TypeError, IndexError):
+        log.warning(f"Failed to read price data for {symbol}")
         return None
 
-    c1_won = (c1_close > c1_open) if direction == "CALL" else (c1_close < c1_open)
+    c1_won = (c1_price > entry_price) if direction == "CALL" else (c1_price < entry_price)
 
     if c1_won:
         return {"result": "WIN", "level": 0, "label": "PROFIT"}
 
-    if len(relevant) >= 2:
-        c2 = relevant.iloc[1]
-        c2_open = get_field_from_row(c2, "Open", symbol)
-        c2_close = get_field_from_row(c2, "Close", symbol)
-        if c2_open is None or c2_close is None:
+    if entry_idx + 1 < len(df):
+        try:
+            c2_price = float(df.iloc[entry_idx + 1][("Close", symbol)])
+        except (KeyError, TypeError, IndexError):
             return {"result": "LOSS", "level": None, "label": "LOSS"}
-        c2_won = (c2_close > c2_open) if direction == "CALL" else (c2_close < c2_open)
+        c2_won = (c2_price > c1_price) if direction == "CALL" else (c2_price < c1_price)
         if c2_won:
             return {"result": "WIN", "level": 1, "label": "PROFIT 1"}
 
