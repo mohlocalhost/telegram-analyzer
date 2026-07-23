@@ -170,13 +170,17 @@ async def verify_signal(signal, entry_time_utc):
         log.info(f"  Available: {[c['time'].strftime('%H:%M') for c in candles]}")
         return None
 
+    log.info(f"  Data: T-1 close={c0['close']:.5f} | T close={c1['close']:.5f}" + (f" | T+1 close={c2['close']:.5f}" if c2 else ""))
+
     c1_won = (c1["close"] > c0["close"]) if direction == "CALL" else (c1["close"] < c0["close"])
+    log.info(f"  Trade 1: {'WIN' if c1_won else 'LOSS'} ({direction}, {c1['close']:.5f} vs {c0['close']:.5f})")
 
     if c1_won:
         return {"result": "WIN", "level": 0, "label": "PROFIT"}
 
     if c2:
         c2_won = (c2["close"] > c1["close"]) if direction == "CALL" else (c2["close"] < c1["close"])
+        log.info(f"  Trade 2 (martingale): {'WIN' if c2_won else 'LOSS'} ({direction}, {c2['close']:.5f} vs {c1['close']:.5f})")
         if c2_won:
             return {"result": "WIN", "level": 1, "label": "PROFIT 1"}
 
