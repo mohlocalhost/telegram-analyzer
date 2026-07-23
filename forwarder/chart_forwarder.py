@@ -224,8 +224,6 @@ def run_health_server():
 
 
 async def main():
-    t = threading.Thread(target=run_health_server, daemon=True)
-    t.start()
     log.info("Starting Chart-Verified Forwarder...")
     await client.start()
     log.info("Logged in successfully")
@@ -292,7 +290,11 @@ if __name__ == "__main__":
     if "--generate-session" in sys.argv:
         asyncio.run(generate_session())
     else:
+        threading.Thread(target=run_health_server, daemon=True).start()
         try:
             asyncio.run(main())
         except KeyboardInterrupt:
             log.info("Shutdown")
+        except Exception as e:
+            log.error(f"Fatal error: {e}", exc_info=True)
+            raise
