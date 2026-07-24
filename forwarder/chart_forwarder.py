@@ -120,8 +120,10 @@ def fetch_forex_candles(symbol, count=5):
         try:
             dt = datetime.strptime(v["datetime"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             o = float(v["open"])
+            h = float(v["high"])
+            l = float(v["low"])
             c = float(v["close"])
-            candles.append({"time": dt, "open": o, "close": c})
+            candles.append({"time": dt, "open": o, "high": h, "low": l, "close": c})
         except (KeyError, ValueError, TypeError) as e:
             log.warning(f"Bad candle data: {v} - {e}")
             continue
@@ -170,17 +172,23 @@ async def verify_signal(signal, entry_time_utc):
         log.info(f"  Available: {[c['time'].strftime('%H:%M') for c in candles]}")
         return None
 
-    log.info(f"  Data: T-1 close={c0['close']:.5f} | T close={c1['close']:.5f}" + (f" | T+1 close={c2['close']:.5f}" if c2 else ""))
+    candle_color = "GREEN" if c1["close"] > c1["open"] else "RED" if c1["close"] < c1["open"] else "FLAT"
+    log.info(f"  Candle T: O={c1['open']:.5f} H=?.????? L=?.????? C={c1['close']:.5f}  {candle_color}")
+    log.info(f"  Method 1 (close vs open): CALL={'WIN' if c1['close'] > c1['open'] else 'LOSS'} PUT={'WIN' if c1['close'] < c1['open'] else 'LOSS'}")
+    log.info(f"  Method 2 (close[T] vs close[T-1]): T-1 close={c0['close']:.5f} T close={c1['close']:.5f}")
+    log.info(f"  CALL={'WIN' if c1['close'] > c0['close'] else 'LOSS'} PUT={'WIN' if c1['close'] < c0['close'] else 'LOSS'}")
 
     c1_won = (c1["close"] > c0["close"]) if direction == "CALL" else (c1["close"] < c0["close"])
-    log.info(f"  Trade 1: {'WIN' if c1_won else 'LOSS'} ({direction}, {c1['close']:.5f} vs {c0['close']:.5f})")
+    log.info(f"  Used method: {'WIN' if c1_won else 'LOSS'}")
 
     if c1_won:
         return {"result": "WIN", "level": 0, "label": "PROFIT"}
 
     if c2:
+        c2_color = "GREEN" if c2["close"] > c2["open"] else "RED" if c2["close"] < c2["open"] else "FLAT"
+        log.info(f"  Candle T+1: O={c2['open']:.5f} C={c2['close']:.5f} {c2_color}")
         c2_won = (c2["close"] > c1["close"]) if direction == "CALL" else (c2["close"] < c1["close"])
-        log.info(f"  Trade 2 (martingale): {'WIN' if c2_won else 'LOSS'} ({direction}, {c2['close']:.5f} vs {c1['close']:.5f})")
+        log.info(f"  Martingale: {'WIN' if c2_won else 'LOSS'}")
         if c2_won:
             return {"result": "WIN", "level": 1, "label": "PROFIT 1"}
 
